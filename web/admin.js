@@ -2628,18 +2628,23 @@ const KOLOM = [["gajiPokok", null], ["uangMakan", "U Makan"], ["tjJabatan", "Tun
 const PER_HARI = m => m === "harian" || m === "operator";
 const nilai = v => v ? fmtNum(v) : "";
 const MODE_NAMA = { harian: "Upah harian", prorata: "Bulanan prorata (berdasarkan hari kerja)", bulanan: "Bulanan tetap", operator: "Operator (harian + jam siang + lembur)" };
-const MODE_BAWAAN = () => aturan.modeGaji || "harian";      // karyawan tanpa pilihan (dulu "Ikut aturan") = harian
+const MODE_BAWAAN = () => aturan.modeGaji || "harian";
+const POLA_BAWAAN = () => aturan.hariKerja?.length === 7 ? "7" : aturan.hariKerja?.length === 5 ? "5" : "6";   // dulu "Ikut aturan" (saat ini Senin–Sabtu)      // karyawan tanpa pilihan (dulu "Ikut aturan") = harian
 // Sekali jalan: karyawan yang dulu "Ikut aturan" dipindah ke cara hitung yang berlaku (Harian) secara permanen
 let migrasiModeJalan = false;
 async function migrasiModeIkutAturan(){
   if (migrasiModeJalan || !CID || !bolehGaji("karyawan")) return; migrasiModeJalan = true;
-  const target = MODE_BAWAAN(), list = karyawan.filter(u => u.kehadiran !== "tidak" && !(gajiMap[u.uid] || {}).modeGaji);
+  const target = MODE_BAWAAN(), tPola = POLA_BAWAAN(), polaNama = ({ "5": "Senin–Jumat", "6": "Senin–Sabtu", "7": "Setiap hari" })[tPola];
+  const list = karyawan.filter(u => u.kehadiran !== "tidak" && (!(gajiMap[u.uid] || {}).modeGaji || !(gajiMap[u.uid] || {}).polaKerja));
   if (!list.length) return;
   try{
-    for (let i = 0; i < list.length; i += 400){ const bt = writeBatch(db);
-      list.slice(i, i + 400).forEach(u => bt.set(D("payroll", u.uid), { modeGaji: target, appVer: VERSI_APP }, { merge: true })); await bt.commit(); }
-    list.forEach(u => { gajiMap[u.uid] = { ...(gajiMap[u.uid] || {}), modeGaji: target }; gAwal[u.uid] = { ...(gAwal[u.uid] || {}), modeGaji: target }; });
-    catatLog(CID, me.uid, profile, "gaji", `Cara hitung gaji pokok ${list.length} karyawan "Ikut aturan" dipindah ke ${MODE_NAMA[target] || target}`);
+    let nMode = 0, nPola = 0;
+    const isi = list.map(u => { const g = gajiMap[u.uid] || {}, d = { appVer: VERSI_APP };
+      if (!g.modeGaji){ d.modeGaji = target; nMode++; } if (!g.polaKerja){ d.polaKerja = tPola; nPola++; } return [u, d]; });
+    for (let i = 0; i < isi.length; i += 400){ const bt = writeBatch(db);
+      isi.slice(i, i + 400).forEach(([u, d]) => bt.set(D("payroll", u.uid), d, { merge: true })); await bt.commit(); }
+    isi.forEach(([u, d]) => { const { appVer, ...x } = d; gajiMap[u.uid] = { ...(gajiMap[u.uid] || {}), ...x }; gAwal[u.uid] = { ...(gAwal[u.uid] || {}), ...x }; });
+    catatLog(CID, me.uid, profile, "gaji", `"Ikut aturan" dipindah permanen: cara hitung gaji pokok ${nMode} karyawan → ${MODE_NAMA[target] || target}, hari kerja ${nPola} karyawan → ${polaNama}`);
   }catch(e){ migrasiModeJalan = false; console.warn("migrasi mode gaji", e); }
 }
 // Daftar komponen (tambahan/potongan) yang bisa diedit
@@ -2705,10 +2710,10 @@ function renderUsers(){
       <label class="k-mode-lbl">Cara hitung gaji pokok</label>
       <select class="k-mode">${Object.entries(MODE_NAMA).map(([v, l]) => `<option value="${v}" ${(g.modeGaji || MODE_BAWAAN()) === v ? "selected" : ""}>${l}</option>`).join("")}</select>
       <div class="pola-pilih"><label>Hari kerja</label>
-      <select class="k-pola"><option value="">Ikut aturan (${aturan.hariKerja?.length === 6 ? "Senin–Sabtu" : aturan.hariKerja?.length === 7 ? "setiap hari" : "Senin–Jumat"})</option>
-        <option value="5" ${g.polaKerja === "5" ? "selected" : ""}>Senin–Jumat</option>
-        <option value="6" ${g.polaKerja === "6" ? "selected" : ""}>Senin–Sabtu</option>
-        <option value="7" ${g.polaKerja === "7" ? "selected" : ""}>Setiap hari (full, Minggu juga kerja)</option>
+      <select class="k-pola">
+        <option value="5" ${(g.polaKerja || POLA_BAWAAN()) === "5" ? "selected" : ""}>Senin–Jumat</option>
+        <option value="6" ${(g.polaKerja || POLA_BAWAAN()) === "6" ? "selected" : ""}>Senin–Sabtu</option>
+        <option value="7" ${(g.polaKerja || POLA_BAWAAN()) === "7" ? "selected" : ""}>Setiap hari (full, Minggu juga kerja)</option>
         <option value="7L" ${(g.polaKerja === "7L" || g.polaKerja === "28") ? "selected" : ""}>Setiap Hari (Full) + Lbr + Lebih HK</option></select></div>
       <div class="lhk-pilih"><label>Lebih HK (masuk hari libur)</label>
       <select class="k-lhk"><option value="">Ikut aturan (${({ hari: "per hari", jam: "per jam" })[aturan.lebihHKMode] || "tidak dibayar"})</option>
@@ -2771,7 +2776,7 @@ function renderUsers(){
       // ringkasan pengaturan (dilipat) : cara gaji · hari kerja · Lebih HK
       const pk = card.querySelector(".k-pola").value, ap = aturan.hariKerja?.length === 7 ? "7" : aturan.hariKerja?.length === 6 ? "6" : "5";
       card.querySelector(".k-atur-ringkas").textContent = "⚙️ " + [tetap ? "Gaji tetap penuh" : (MODE_NAMA[m] || m || "Bulanan"),
-        ({ "5": "Senin–Jumat", "6": "Senin–Sabtu", "7": "Setiap hari" })[pk || ap],
+        ({ "5": "Senin–Jumat", "6": "Senin–Sabtu", "7": "Setiap hari", "7L": "Setiap hari + Lbr + LHK", "28": "Setiap hari + Lbr + LHK" })[pk || ap],
         opSupir || pk === "7" ? "" : "LHK " + (lm === "jam" ? "per jam" : lm === "hari" ? "per hari" : "tidak dibayar")].filter(Boolean).join(" · ");
       // hari libur dihitung lembur -> pengaturan Lebih HK tidak dipakai periode ini
       if (lj === "lembur"){ card.querySelector(".lhk-pilih").hidden = true; card.querySelectorAll(".lhk-only").forEach(x => x.hidden = true); }
