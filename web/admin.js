@@ -3106,13 +3106,18 @@ function isiAlphaCV(){
   const pilih = Array.isArray(aturan.tanpaDendaAlphaCV) ? aturan.tanpaDendaAlphaCV : daftarCV.filter(c => /cipta\s*samudra/i.test(c.nama || "")).map(c => c.id);
   el.innerHTML = [...daftarCV.map(c => [c.id, c.nama]), ["-", "Tanpa CV"]].map(([id, n]) =>
     `<label class="check-inline"><input type="checkbox" value="${esc(id)}" ${pilih.includes(id) ? "checked" : ""}> ${esc(n)}</label>`).join("");
+  // HK tampil sesuai absen (default: CV Jasa Karya Pratama bila belum pernah diatur)
+  const el2 = $("#hkCV-list"); if (!el2) return;
+  const pilih2 = Array.isArray(aturan.hkAbsenCV) ? aturan.hkAbsenCV : daftarCV.filter(c => /jasa\s*karya/i.test(c.nama || "")).map(c => c.id);
+  el2.innerHTML = [...daftarCV.map(c => [c.id, c.nama]), ["-", "Tanpa CV"]].map(([id, n]) =>
+    `<label class="check-inline"><input type="checkbox" value="${esc(id)}" ${pilih2.includes(id) ? "checked" : ""}> ${esc(n)}</label>`).join("");
 }
 // Tampilkan pilihan yang relevan untuk tiap cara hitung
 function modeUI(){
   const m = $("#a-modeGaji").value;
   $("#pembagi-wrap").hidden = PER_HARI(m);
   $("#potongAlpha-wrap").hidden = m !== "bulanan";
-  $("#alphaCV-wrap").hidden = m === "operator";
+  $("#alphaCV-wrap").hidden = $("#hkCV-wrap").hidden = m === "operator";
   $("#izin-label").textContent = m === "bulanan" ? "Potong gaji pokok per hari izin (sakit tidak dipotong)" : "Izin tidak dibayar (sakit tetap dibayar)";
   $("#mode-info").textContent = {
     prorata: "Gaji pokok ÷ hari kerja × hari masuk. Hari masuk = hadir di hari kerja + sakit + izin (kecuali izin tidak dibayar). Contoh: gaji pokok Rp 5.000.000, 22 hari kerja, masuk 20 hari → Rp 4.545.455. Tunjangan tetap dibayar penuh.",
@@ -3177,6 +3182,7 @@ $("#g-aturan-save").onclick = async () => {
   NUM.forEach(k => a[k] = angka($("#a-" + k)));
   CHK.forEach(k => a[k] = $("#a-" + k).checked);
   a.tanpaDendaAlphaCV = [...document.querySelectorAll("#alphaCV-list input:checked")].map(c => c.value);
+  a.hkAbsenCV = [...document.querySelectorAll("#hkCV-list input:checked")].map(c => c.value);
   for (const k of PCT){
     const v = persen($("#a-" + k));
     if (!isFinite(v) || v < 0 || v > 100){ msg(m, "Persentase BPJS harus angka 0 sampai 100.", "bad"); return; }

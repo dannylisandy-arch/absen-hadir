@@ -299,6 +299,8 @@ export function hitungGaji(records, aturan, gaji, year, month, today = new Date(
   // Hari masuk yang dibayar: hadir di hari kerja + sakit + izin (kecuali izin dipotong)
   // Group CV tertentu (Aturan gaji): tidak ada denda / potongan gaji pokok untuk hari tidak hadir
   const bebasAlpha = Array.isArray(A.tanpaDendaAlphaCV) && A.tanpaDendaAlphaCV.includes(G.grupCV || "-");
+  // Group CV tertentu (Aturan gaji, mis. JKP): HK yang tampil = hari yang diabsen, gaji tetap penuh (hanya tampilan)
+  const hkAbsen = bebasAlpha && !G.gajiTetap && Array.isArray(A.hkAbsenCV) && A.hkAbsenCV.includes(G.grupCV || "-");
   const hariDibayar = hadirKerja + sakit + cuti + (A.potongIzin ? 0 : izin) + (bebasAlpha && (mode === "prorata" || mode === "harian") ? alpha : 0);   // cuti = hari dibayar
   const pembagi = A.pembagi > 0 ? A.pembagi : hariKerja;
   let gpDibayar = G.gajiPokok;
@@ -415,16 +417,16 @@ export function hitungGaji(records, aturan, gaji, year, month, today = new Date(
   p.potongan = p.potTelat + p.potAlpha + p.potIzin + p.bpjsKes + p.bpjsJht + p.bpjsJp + p.pph + p.komponenPotong + p.potPinjaman;
   p.bersih = Math.max(0, p.bruto - p.potongan + (p.pphLebih || 0));
 
-  return { tarifLembur: uLembur > 0 && !(manual && manual.uangLembur != null && manual.uangLembur !== "") ? uLembur : 0, manual: manual ? { hari: hadirKerja, lembur: jamLembur, jSiang, trip, ket: manual.ket || "", ...(manual.kosong ? { kosong: true } : {}) } : null, aturan: A, gaji: G, periodeLabel: P.label, shiftNama: S ? S.nama + " (" + S.masuk + "–" + S.pulang + ")" : "", mode, hariDibayar, pembagi, rows, kalender, menunggu, gajiTetap: !!G.gajiTetap, bebasAlpha,
+  return { tarifLembur: uLembur > 0 && !(manual && manual.uangLembur != null && manual.uangLembur !== "") ? uLembur : 0, manual: manual ? { hari: hadirKerja, lembur: jamLembur, jSiang, trip, ket: manual.ket || "", ...(manual.kosong ? { kosong: true } : {}) } : null, aturan: A, gaji: G, periodeLabel: P.label, shiftNama: S ? S.nama + " (" + S.masuk + "–" + S.pulang + ")" : "", mode, hariDibayar, pembagi, rows, kalender, menunggu, gajiTetap: !!G.gajiTetap, bebasAlpha, hkAbsen,
     // Group CV tanpa potongan tidak hadir: HK yang tampil = hari yang diabsen (gaji tetap penuh); hari kerja kalender tetap disimpan
-    hariKerja: bebasAlpha && !G.gajiTetap && !manual ? hadirKerja + sakit + cuti + izin : hariKerja, hariKerjaKalender: hariKerja, hadir, hadirKerja, lebihHK, jamLebihHK, tarifLebihHK, lebihHKMode: modeLHK, liburJadi: pilLibur, alpha, sakit, izin, cuti, kaliTelat, menitTelat, jamLembur, tanpaPulang, ...p };
+    hariKerja: hkAbsen ? hadirKerja + sakit + cuti + izin : hariKerja, hariKerjaKalender: hariKerja, hadir, hadirKerja, lebihHK, jamLebihHK, tarifLebihHK, lebihHKMode: modeLHK, liburJadi: pilLibur, alpha, sakit, izin, cuti, kaliTelat, menitTelat, jamLembur, tanpaPulang, ...p };
 }
 
 // Rincian gaji sebagai HTML (dipakai di layar dan slip cetak)
 export function rincianHTML(r, harian = true){
   const A = r.aturan, mode = r.mode || A.modeGaji || "bulanan";
-  const gpLabel = (mode === "harian" || mode === "operator") ? `Upah harian (${r.bebasAlpha && r.alpha ? "tetap " : ""}${nf(r.hariDibayar)} hari × ${rp(r.gaji.gajiPokok)})`
-    : mode === "prorata" ? (r.bebasAlpha ? "Gaji pokok (tetap)" : `Gaji pokok (${nf(Math.min(r.hariDibayar, r.pembagi))}/${nf(r.pembagi)} hari × ${rp(r.gaji.gajiPokok)})`)
+  const gpLabel = (mode === "harian" || mode === "operator") ? `Upah harian (${r.hkAbsen && r.alpha ? "tetap " : ""}${nf(r.hariDibayar)} hari × ${rp(r.gaji.gajiPokok)})`
+    : mode === "prorata" ? (r.hkAbsen ? "Gaji pokok (tetap)" : `Gaji pokok (${nf(Math.min(r.hariDibayar, r.pembagi))}/${nf(r.pembagi)} hari × ${rp(r.gaji.gajiPokok)})`)
     : "Gaji pokok";
   const baris = (k, v, neg) => `<tr><td>${k}</td><td class="num">${neg && v ? "−" : ""}${rp(v)}</td></tr>`;
   let h = `<table class="slip">
