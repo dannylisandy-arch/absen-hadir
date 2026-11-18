@@ -1,0 +1,72 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function user(id) { return firestore.get(/databases/(default)/documents/users/$(id)).data; }
+    // Foto selfie dari mode kios: kios/{cid}/{uid}/{idAbsen}.jpg (diunggah admin/supervisor yang membuka kios)
+    match /kios/{cid}/{uid}/{file} {
+      allow create: if request.auth != null
+        && user(request.auth.uid).role in ['admin', 'supervisor', 'superadmin']
+        && (user(request.auth.uid).role == 'superadmin' || user(request.auth.uid).cid == cid)
+        && user(uid).cid == cid
+        && request.resource.size < 1024 * 1024 && request.resource.contentType == 'image/jpeg';
+      allow read: if request.auth != null && (
+        request.auth.uid == uid
+        || user(request.auth.uid).role == 'superadmin'
+        || (user(request.auth.uid).role in ['admin', 'supervisor'] && user(request.auth.uid).cid == cid));
+    }
+    // Backup data: backup/{cid}/{file}.json.gz — dibuat server (Auto BackUp), superadmin boleh mengunggah file untuk di-restore
+    match /backup/{cid}/{file} {
+      allow read: if request.auth != null && user(request.auth.uid).role == 'superadmin';
+      allow create: if request.auth != null && user(request.auth.uid).role == 'superadmin'
+        && file.matches('unggah-.*[.]json([.]gz)?') && request.resource.size < 100 * 1024 * 1024;
+    }
+    // Foto selfie absen: absen/{uid}/{idAbsen}.jpg
+    match /absen/{uid}/{file} {
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.resource.size < 1024 * 1024 && request.resource.contentType == 'image/jpeg';
+      allow read: if request.auth != null && (
+        request.auth.uid == uid
+        || user(request.auth.uid).role == 'superadmin'
+        || (user(request.auth.uid).role in ['admin', 'supervisor'] && user(request.auth.uid).cid == user(uid).cid));
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+    // Surat karyawan berhenti: berhenti/{cid}/{uid}/{namaFile} (diunggah admin/superadmin)
+    match /berhenti/{cid}/{uid}/{file} {
+      allow create: if request.auth != null
+        && (user(request.auth.uid).role == 'superadmin'
+            || (user(request.auth.uid).role == 'admin' && user(request.auth.uid).cid == cid))
+        && request.resource.size < 5 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow read: if request.auth != null && (
+        request.auth.uid == uid
+        || user(request.auth.uid).role == 'superadmin'
+        || (user(request.auth.uid).role == 'admin' && user(request.auth.uid).cid == cid));
+    }
+    // Lampiran absen manual: manual/{cid}/{uid}/{namaFile} (diunggah admin/superadmin)
+    match /manual/{cid}/{uid}/{file} {
+      allow create: if request.auth != null
+        && (user(request.auth.uid).role == 'superadmin'
+            || (user(request.auth.uid).role == 'admin' && user(request.auth.uid).cid == cid))
+        && request.resource.size < 5 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow read: if request.auth != null && (
+        request.auth.uid == uid
+        || user(request.auth.uid).role == 'superadmin'
+        || (user(request.auth.uid).role in ['admin', 'supervisor'] && user(request.auth.uid).cid == cid));
+    }
+    // Lampiran izin/sakit: izin/{uid}/{idPengajuan}/{namaFile}
+    match /izin/{uid}/{izinId}/{file} {
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+            || request.resource.contentType in ['application/pdf', 'application/msword',
+                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
+      // Pemilik, superadmin, atau admin/supervisor di perusahaan yang sama
+      allow read: if request.auth != null && (
+        request.auth.uid == uid
+        || user(request.auth.uid).role == 'superadmin'
+        || (user(request.auth.uid).role in ['admin', 'supervisor'] && user(request.auth.uid).cid == user(uid).cid));
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

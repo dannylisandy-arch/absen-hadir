@@ -1,0 +1,28 @@
+# Deploy otomatis aturan (Firestore + Storage) dan Functions ke Firebase absencsm setiap ada perubahan
+name: Deploy Firebase
+on:
+  push:
+    branches: [main]
+    paths: ["firestore.rules", "firestore.indexes.json", "storage.rules", "firebase.json", "functions/**", ".github/workflows/deploy-firebase.yml"]
+  workflow_dispatch:
+concurrency: { group: firebase-deploy, cancel-in-progress: false }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Kunci akses Firebase
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/sa.json"
+      - name: Pasang paket functions
+        run: cd functions && npm install --no-audit --no-fund
+      - name: Cek kode functions
+        run: cd functions && node -e "require('./index.js'); console.log('KODE OK')"
+      - name: Deploy aturan + functions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+        run: npx --yes firebase-tools@13 deploy --only firestore,storage,functions --project absencsm --force --non-interactive
+      - name: Hapus kunci
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa.json"

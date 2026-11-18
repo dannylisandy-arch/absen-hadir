@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="versi-app" content="2026.11.18e">
+<script>
+/* Perbaikan otomatis: kalau sebagian file aplikasi masih versi lama dari cache (sinyal putus saat update)
+   aplikasi bisa error saat dimuat. Hapus cache lalu muat ulang SEKALI. */
+(function(){
+  window.__perbaikiApp = function(){
+    try{ if (sessionStorage.getItem("__perbaiki") === "1") return; sessionStorage.setItem("__perbaiki", "1"); }catch(e){ return; }
+    var ulang = function(){ location.reload(); };
+    try{ (window.caches ? caches.keys().then(function(ks){ return Promise.all(ks.map(function(k){ return caches.delete(k); })); }) : Promise.resolve()).then(ulang, ulang); }catch(e){ ulang(); }
+  };
+  addEventListener("error", function(){ if (!window.__appSiap) window.__perbaikiApp(); });
+})();
+</script>
+<script>try{var t=localStorage.getItem("absen:tema")||"terang";if(t!=="auto")document.documentElement.setAttribute("data-theme",t==="gelap"?"dark":"light")}catch(e){}</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#13213C">
+<title>Absensi Hadir</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Absensi">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- ===== Login ===== -->
+<main id="auth-view" class="auth" hidden>
+  <div class="brand"><img src="icon.svg" alt="" width="56" height="56">
+    <div><h1>Absensi Hadir</h1><p class="date" id="auth-sub">Masuk dengan username dan password.</p><span class="versi-baris"><small class="versi-tampil"></small><button type="button" class="muat-ulang-app btn-perbarui" title="Perbarui / muat ulang ke versi terbaru" aria-label="Perbarui aplikasi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></svg></button></span></div></div>
+  <form class="row" id="auth-form" novalidate>
+    <div id="f-nama-wrap" hidden><label for="f-nama">Nama lengkap</label><input id="f-nama" autocomplete="name"></div>
+    <label for="f-user">Username</label>
+    <input id="f-user" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="contoh: rina.w">
+    <p class="meta" id="user-hint" hidden style="margin:4px 0 0">3–20 karakter: huruf kecil, angka, titik, atau garis bawah.</p>
+    <label for="f-pass">Password</label>
+    <div class="pass"><input id="f-pass" type="password" autocomplete="current-password">
+      <button type="button" class="eye" id="f-eye" aria-label="Tampilkan password" title="Tampilkan password"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+    <div id="f-pass2-wrap" hidden><label for="f-pass2">Ulangi password</label><input id="f-pass2" type="password" autocomplete="new-password"></div>
+    <label class="check"><input type="checkbox" id="f-ingat" checked> Ingat saya di perangkat ini</label>
+    <button type="submit" id="f-go" style="width:100%;margin-top:14px">Masuk</button>
+    <p class="meta" id="lupa" style="text-align:center;margin:12px 0 0">Belum punya akun atau lupa password?<br>Hubungi admin atau supervisor.<br><a href="privasi.html" target="_blank" rel="noopener">Kebijakan privasi</a></p>
+    <p class="meta" style="text-align:center;margin:8px 0 0;font-size:.72rem">Dilindungi reCAPTCHA; berlaku <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Kebijakan Privasi</a> dan <a href="https://policies.google.com/terms" target="_blank" rel="noopener">Persyaratan Layanan</a> Google.</p>
+  </form>
+  <div class="msg" id="auth-msg" role="status"></div>
+</main>
+
+<!-- ===== Aplikasi ===== -->
+<p id="memuat" class="memuat" role="status">Memuat…</p>
+<div id="app-view" hidden>
+<main>
+  <div class="topbar topbar-pt"><span class="who-wrap"><img id="pt-logo" class="pt-logo" alt="" hidden><span id="who"></span></span><button type="button" class="muat-ulang-app btn-perbarui hp-saja" title="Perbarui / muat ulang ke versi terbaru" aria-label="Perbarui aplikasi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></svg></button></div>
+  <div class="head">
+    <div><div class="sapa" id="sapa"></div><div class="clock" id="clock">--:--</div><div class="date" id="date"></div>
+      <div class="hero-bawah"><div class="status-hari" id="status-hari" role="status"></div>
+        <button type="button" class="hero-keluar" id="logout-hero">Keluar</button></div></div>
+  </div>
+
+  <section id="tab-absen" class="on">
+    <div class="notif-banner" id="notif-banner" hidden>
+      <div><b>🔔 Notifikasi belum aktif</b><div class="meta" id="notif-banner-ket">Aktifkan supaya dapat kabar saat absen & pengajuan disetujui atau ditolak.</div></div>
+      <button type="button" class="small" id="notif-banner-on">Aktifkan</button>
+    </div>
+    <div class="vf">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="arc" id="arc-face"   cx="50" cy="50" r="46" pathLength="300" stroke-dasharray="92 208" stroke-dashoffset="0"/>
+        <circle class="arc" id="arc-finger" cx="50" cy="50" r="46" pathLength="300" stroke-dasharray="92 208" stroke-dashoffset="-100"/>
+        <circle class="arc" id="arc-gps"    cx="50" cy="50" r="46" pathLength="300" stroke-dasharray="92 208" stroke-dashoffset="-200"/>
+      </svg>
+      <div class="lens" id="lens"><div class="ph">📷<br>Kamera menyala saat absen</div></div>
+      <div class="lens-cap" id="lens-cap" hidden></div>
+    </div>
+    <div class="checks">
+      <div class="chk" id="c-face"><b>Wajah</b><span>Menunggu</span></div>
+      <div class="chk" id="c-finger"><b>Sidik jari</b><span>Menunggu</span></div>
+      <div class="chk" id="c-gps"><b>Lokasi</b><span>Menunggu</span></div>
+    </div>
+    <div class="pilih-metode" id="pilih-metode" role="radiogroup" aria-label="Metode verifikasi" hidden>
+      <span class="meta">Absen pakai</span>
+      <div class="pm-tombol">
+        <button type="button" role="radio" data-m="wajah">🙂 Wajah</button>
+        <button type="button" role="radio" data-m="jari">👆 Sidik jari</button>
+      </div>
+    </div>
+    <div class="btns">
+      <button id="btn-in">Absen Masuk</button>
+      <button id="btn-out" class="alt" disabled>Absen Pulang</button>
+    </div>
+    <p class="meta" id="pulang-hint">Absen Pulang aktif setelah absen masuk.</p>
+    <div class="msg" id="msg" role="status"></div>
+
+    <div class="panel" id="izin" hidden>
+      <b>Di luar area kantor</b>
+      <p id="izin-info"></p>
+      <label for="alasan">Alasan</label>
+      <textarea id="alasan" rows="2" placeholder="Contoh: tugas luar ke kantor klien"></textarea>
+      <div class="btns" style="margin-top:12px">
+        <button id="izin-send">Minta persetujuan</button>
+        <button id="izin-cancel" class="alt">Batal</button>
+      </div>
+    </div>
+
+    <div class="aksi-bawah">
+      <button type="button" class="small alt" id="cuti-open">📝 Izin / sakit / cuti</button>
+      <button type="button" class="small alt cekhp-pintas" id="cekhp-pintas">🩺 Cek kesiapan HP</button>
+    </div>
+    <div class="panel" id="cuti" hidden style="border-color:var(--ink)">
+      <b>Pengajuan izin / sakit / cuti</b>
+      <label for="c-jenis">Jenis</label>
+      <select id="c-jenis"><option value="sakit">Sakit</option><option value="izin">Izin</option><option value="cuti">Cuti</option><option value="lupaMasuk">Absen Masuk</option></select>
+      <div class="grid2">
+        <div><label for="c-mulai" id="c-mulai-label">Dari tanggal</label><input id="c-mulai" type="date"></div>
+        <div id="c-selesai-wrap"><label for="c-selesai">Sampai tanggal</label><input id="c-selesai" type="date"></div>
+        <div id="c-jam-wrap" hidden><label for="c-jam" id="c-jam-label">Jam masuk</label><input id="c-jam" type="text" readonly tabindex="-1" class="jam-kunci" aria-readonly="true"><p class="meta" id="c-jam-ket" hidden></p></div>
+      </div>
+      <p class="meta" id="c-info" style="margin:6px 0 0"></p>
+      <p class="meta" id="c-sisa" style="margin:4px 0 0" hidden></p>
+      <label for="c-alasan">Keterangan</label>
+      <textarea id="c-alasan" rows="2" placeholder="Contoh: demam, sudah ke dokter"></textarea>
+      <label>Lampiran <span class="meta">(opsional · foto, PDF, atau Word · maks. 3 file, 5 MB per file)</span></label>
+      <div class="lampiran" id="c-files"></div>
+      <label class="addfile" id="c-add"><input type="file" id="c-file" accept="image/*,.pdf,.doc,.docx" multiple>📎 Tambah foto / dokumen</label>
+      <div class="btns" style="margin-top:12px">
+        <button id="c-send">Kirim pengajuan</button>
+        <button id="c-cancel" class="alt">Batal</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-riwayat">
+    <h1>Riwayat</h1>
+    <h2>Izin &amp; sakit</h2>
+    <ul class="log" id="log-izin"></ul>
+    <h2>Absen</h2>
+    <div id="absen-wrap">
+      <div class="bulan-bar">
+        <button class="small alt" id="r-prev" aria-label="Bulan sebelumnya">‹</button>
+        <input type="month" id="r-bulan" aria-label="Pilih bulan">
+        <button class="small alt" id="r-next" aria-label="Bulan berikutnya">›</button>
+      </div>
+      <div id="r-info"></div>
+      <ul class="log" id="log"></ul>
+    </div>
+  </section>
+
+  <section id="tab-gaji">
+    <h1>Gaji</h1>
+    <div class="sub on" id="sub-slip">
+      <p class="date">Slip yang sudah disimpan admin, 12 bulan terakhir.</p>
+      <div class="card rekap" id="s-total" hidden></div>
+      <button class="small alt" id="s-print-all" hidden style="width:100%;margin-bottom:14px">Cetak semua slip</button>
+      <p class="meta" style="margin:0 0 8px">Ketuk bulan untuk melihat rincian.</p>
+      <div id="s-list"><p class="meta">Memuat…</p></div>
+      <div id="pj-saya"></div>
+    </div>
+    <div class="sub" id="sub-kira" hidden>
+    <p class="date">Dihitung langsung dari absensi. Angka resmi tetap mengikuti slip dari admin.</p>
+    <div class="grid2">
+      <div><label for="g-bulan">Periode</label><input id="g-bulan" type="month"></div>
+      <div style="align-self:end"><button class="small" id="g-hitung" style="width:100%">Lihat</button></div>
+    </div>
+    <div id="g-out" style="margin-top:14px"></div>
+    </div>
+  </section>
+
+  <section id="tab-atur">
+    <h1>Pengaturan</h1>
+    <p class="date"><span id="metode-info">Daftarkan <b>wajah, sidik jari, atau keduanya</b>. Cukup salah satu untuk bisa absen.</span> Masing-masing hanya bisa didaftarkan <b>satu kali</b>, lalu terkunci. Untuk daftar ulang, minta admin melakukan reset.</p>
+
+    <h2>Cek kesiapan HP</h2>
+    <div class="row cekhp">
+      <p style="margin-top:0">Periksa apakah izin & pengaturan HP sudah sesuai supaya absen lancar (lokasi, kamera, sidik jari, jam HP, dll.).</p>
+      <button class="small" id="cekhp-go">🩺 Cek HP sekarang</button>
+      <div id="cekhp-hasil"></div>
+    </div>
+
+    <div id="sec-wajah">
+    <h2>Wajah</h2>
+    <div class="row">
+      <div class="state" id="s-face"></div>
+      <p>Hadapkan wajah lurus ke kamera dengan cahaya cukup.</p>
+      <button class="small" id="reg-face">Daftarkan wajah</button>
+    </div>
+    </div>
+
+    <div id="sec-jari">
+    <h2>Sidik jari</h2>
+    <div class="row">
+      <div class="state" id="s-finger"></div>
+      <p>Memakai sensor sidik jari atau Face ID bawaan HP.</p>
+      <button class="small" id="reg-finger">Daftarkan sidik jari</button>
+    </div>
+    </div>
+
+    <h2>Tampilan</h2>
+    <div class="row">
+      <label for="tema-pilih" style="margin-top:0">Tema</label>
+      <select id="tema-pilih"><option value="terang">Terang</option><option value="gelap">Gelap</option><option value="auto">Ikuti perangkat</option></select>
+      <p class="meta versi-app" style="margin:8px 0 0"></p>
+      <button type="button" class="small alt muat-ulang-app" style="margin-top:6px">🔄 Muat ulang aplikasi</button>
+
+    </div>
+
+    <h2>Notifikasi</h2>
+    <div class="row">
+      <div class="state" id="s-notif"></div>
+      <p>Dapat kabar saat absen di luar area dan pengajuan izin / sakit / cuti disetujui atau ditolak, serta pengingat kalau belum absen pulang.</p>
+      <button class="small" id="notif-on">Aktifkan notifikasi</button>
+      <p class="meta" id="notif-ket"></p>
+      <a class="btn small alt" href="notif-absen.mp3" download="Notif dari Absen.mp3" style="margin-top:8px">🔊 Unduh suara "Notif dari Absen"</a>
+      <p class="meta" style="margin:4px 0 0">Supaya notifikasi berbunyi "Notif dari Absen" walau aplikasi tertutup: unduh suaranya, lalu buka Setelan HP › Aplikasi › Absensi Hadir › Notifikasi › Suara, dan pilih file itu.</p>
+    </div>
+
+    <h2>Lokasi absen</h2>
+    <div class="row"><div id="kantor-info" style="margin:0">Memuat…</div></div>
+
+    <button class="small alt" id="logout" style="margin-top:8px" hidden>Keluar</button>
+    <div class="msg" id="msg2" role="status"></div>
+  </section>
+</main>
+
+<nav>
+  <div class="navbrand"><img src="icon.svg" alt=""><span class="nb-teks">Absensi Hadir</span><span class="versi-baris"><small class="versi-tampil"></small><button type="button" class="muat-ulang-app btn-perbarui" title="Perbarui / muat ulang ke versi terbaru" aria-label="Perbarui aplikasi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></svg></button></span></div>
+  <button data-tab="absen" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Absen</span></button>
+  <button data-tab="riwayat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg><span>Riwayat</span></button>
+  <button data-tab="gaji"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/></svg><span>Gaji</span></button>
+  <button data-tab="atur"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span>Pengaturan</span></button>
+</nav>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script type="module" src="./index.js"></script>
+</body>
+</html>

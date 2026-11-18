@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="versi-app" content="2026.11.18e">
+<script>
+/* Perbaikan otomatis: kalau sebagian file aplikasi masih versi lama dari cache (sinyal putus saat update)
+   aplikasi bisa error saat dimuat. Hapus cache lalu muat ulang SEKALI. */
+(function(){
+  window.__perbaikiApp = function(){
+    try{ if (sessionStorage.getItem("__perbaiki") === "1") return; sessionStorage.setItem("__perbaiki", "1"); }catch(e){ return; }
+    var ulang = function(){ location.reload(); };
+    try{ (window.caches ? caches.keys().then(function(ks){ return Promise.all(ks.map(function(k){ return caches.delete(k); })); }) : Promise.resolve()).then(ulang, ulang); }catch(e){ ulang(); }
+  };
+  addEventListener("error", function(){ if (!window.__appSiap) window.__perbaikiApp(); });
+})();
+</script>
+<script>try{var t=localStorage.getItem("absen:tema")||"terang";if(t!=="auto")document.documentElement.setAttribute("data-theme",t==="gelap"?"dark":"light")}catch(e){}</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#13213C">
+<title>Kios Absensi</title>
+<link rel="manifest" href="manifest-kios.json">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Absensi">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="kios-body">
+<p id="memuat" class="memuat" role="status">Memuat…</p>
+
+<main id="auth-view" class="auth" hidden>
+  <div class="brand"><img src="icon.svg" alt="" width="56" height="56">
+    <div><h1>Mode Kios</h1><p class="date">Dibuka oleh admin atau supervisor di perangkat kantor.</p><span class="versi-baris"><small class="versi-tampil"></small><button type="button" class="muat-ulang-app btn-perbarui" title="Perbarui / muat ulang ke versi terbaru" aria-label="Perbarui aplikasi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></svg></button></span></div></div>
+  <form class="row" id="auth-form" novalidate>
+    <label for="f-user">Username admin / supervisor</label>
+    <input id="f-user" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+    <label for="f-pass">Password</label>
+    <div class="pass"><input id="f-pass" type="password" autocomplete="current-password">
+      <button type="button" class="eye" id="f-eye" aria-label="Tampilkan password"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+    <button type="submit" id="f-go" style="width:100%;margin-top:14px">Buka kios</button>
+  </form>
+  <p class="meta" style="text-align:center;margin:10px 0 0;font-size:.72rem">Dilindungi reCAPTCHA; berlaku <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Kebijakan Privasi</a> dan <a href="https://policies.google.com/terms" target="_blank" rel="noopener">Persyaratan Layanan</a> Google.</p>
+  <div class="msg" id="auth-msg" role="status"></div>
+</main>
+
+<main id="app-view" class="kios" hidden>
+  <header class="kios-atas">
+    <div class="kios-pt"><img id="pt-logo" class="pt-logo" alt="" hidden><b id="kios-pt"></b></div>
+    <div class="kios-jam"><span id="kios-jam">--.--</span><small id="kios-tgl"></small></div>
+  </header>
+
+  <section class="kios-isi">
+    <div class="card kios-form" id="k-form">
+      <h1>Absen di sini</h1>
+      <p class="meta" style="margin-top:0">Untuk karyawan yang tidak bisa absen dari HP. Masukkan akunmu, lalu hadapkan wajah ke kamera.</p>
+      <label for="k-user">Username</label>
+      <input id="k-user" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
+      <label for="k-pass">Password</label>
+      <div class="pass"><input id="k-pass" type="password" autocomplete="off">
+        <button type="button" class="eye" id="k-eye" aria-label="Tampilkan password"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+      <div class="btns" style="margin-top:14px"><button type="button" id="k-masuk">Absen Masuk</button><button type="button" class="alt" id="k-pulang">Absen Pulang</button></div>
+      <div class="msg" id="k-msg" role="status"></div>
+    </div>
+
+    <div class="card kios-kamera" id="k-kamera" hidden>
+      <p class="kios-nama" id="k-nama"></p>
+      <div class="vf"><div class="lens" id="lens"></div><div class="lens-cap" id="lens-cap" hidden></div></div>
+      <p class="meta" id="k-status" style="text-align:center"></p>
+    </div>
+
+    <div class="card kios-hasil" id="k-hasil" hidden>
+      <div class="kios-centang" id="k-ikon">✅</div>
+      <h2 id="k-judul"></h2>
+      <p id="k-ket" class="meta"></p>
+    </div>
+  </section>
+
+  <footer class="kios-bawah">
+    <label for="k-lokasi" class="meta">Lokasi kios</label>
+    <select id="k-lokasi" aria-label="Lokasi kios"></select>
+    <span class="meta" id="k-oleh"></span>
+    <button type="button" class="small alt" id="k-tutup">Tutup kios</button>
+  </footer>
+
+  <div class="dialog-latar" id="k-tutup-dlg" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="k-tutup-judul">
+      <p class="dialog-teks" id="k-tutup-judul">Masukkan password admin/supervisor untuk menutup kios.</p>
+      <input id="k-tutup-pass" type="password" autocomplete="current-password" aria-label="Password admin">
+      <div class="msg" id="k-tutup-msg" role="status"></div>
+      <div class="dialog-aksi" style="margin-top:14px"><button type="button" class="dialog-tidak" id="k-tutup-batal">Batal</button>
+        <button type="button" class="dialog-ya bahaya" id="k-tutup-ya">Tutup kios</button></div>
+    </div>
+  </div>
+</main>
+<script type="module" src="./kios.js"></script>
+<div class="toast" id="toast" role="status"></div>
+</body>
+</html>

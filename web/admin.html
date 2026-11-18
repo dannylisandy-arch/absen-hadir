@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="versi-app" content="2026.11.18e">
+<script>
+/* Perbaikan otomatis: kalau sebagian file aplikasi masih versi lama dari cache (sinyal putus saat update)
+   aplikasi bisa error saat dimuat. Hapus cache lalu muat ulang SEKALI. */
+(function(){
+  window.__perbaikiApp = function(){
+    try{ if (sessionStorage.getItem("__perbaiki") === "1") return; sessionStorage.setItem("__perbaiki", "1"); }catch(e){ return; }
+    var ulang = function(){ location.reload(); };
+    try{ (window.caches ? caches.keys().then(function(ks){ return Promise.all(ks.map(function(k){ return caches.delete(k); })); }) : Promise.resolve()).then(ulang, ulang); }catch(e){ ulang(); }
+  };
+  addEventListener("error", function(){ if (!window.__appSiap) window.__perbaikiApp(); });
+})();
+</script>
+<script>try{var t=localStorage.getItem("absen:tema")||"terang";if(t!=="auto")document.documentElement.setAttribute("data-theme",t==="gelap"?"dark":"light")}catch(e){}</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#13213C">
+<title>Dashboard Absensi</title>
+<link rel="manifest" href="manifest-admin.json">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Absensi">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="auth-view" class="auth" hidden>
+  <div class="brand"><img src="icon.svg" alt="" width="56" height="56">
+    <div><h1>Dashboard</h1><p class="date">Khusus admin dan supervisor.</p><span class="versi-baris"><small class="versi-tampil"></small><button type="button" class="muat-ulang-app btn-perbarui" title="Perbarui / muat ulang ke versi terbaru" aria-label="Perbarui aplikasi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></svg></button></span></div></div>
+  <form class="row" id="auth-form" novalidate>
+    <label for="f-user">Username</label>
+    <input id="f-user" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+    <label for="f-pass">Password</label>
+    <div class="pass"><input id="f-pass" type="password" autocomplete="current-password">
+      <button type="button" class="eye" id="f-eye" aria-label="Tampilkan password" title="Tampilkan password"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+    <label class="check"><input type="checkbox" id="f-ingat" checked> Ingat saya di perangkat ini</label>
+    <button type="submit" id="f-go" style="width:100%;margin-top:14px">Masuk</button>
+    <button type="button" class="demo-catatan" id="isi-demo" title="Ketuk untuk mengisi otomatis">Untuk Demo &gt; Username = Password = <b>Demo01</b></button>
+  </form>
+  <p class="meta" style="text-align:center;margin:10px 0 0;font-size:.72rem">Dilindungi reCAPTCHA; berlaku <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Kebijakan Privasi</a> dan <a href="https://policies.google.com/terms" target="_blank" rel="noopener">Persyaratan Layanan</a> Google.</p>
+  <div class="msg" id="auth-msg" role="status"></div>
+</main>
+
+<p id="memuat" class="memuat" role="status">Memuat…</p>
+<div id="app-view" hidden>
+<main>
+  <div class="topbar"><span class="who-wrap"><img id="pt-logo" class="pt-logo" alt="" hidden><span id="who"></span></span><span class="topbar-kanan"><button type="button" class="muat-ulang-app btn-perbarui hp-saja" title="Perbarui / muat ulang ke versi terbaru" aria-label="Perbarui aplikasi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></svg></button><span id="role"></span>
+    <button type="button" class="keluar-hp" id="logout-hp" title="Keluar" aria-label="Keluar dari dashboard">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H5v16h4M14 8l4 4-4 4M18 12H8"/></svg></button></span></div>
+  <div id="masa-info" class="masa-info" role="status" hidden></div>
+
+  <section id="tab-izin" class="on">
+    <h1>Persetujuan</h1>
+    <div class="subtabs" role="tablist">
+      <button role="tab" data-s="sub-tunggu" aria-selected="true">Menunggu</button>
+      <button role="tab" data-s="sub-rwy" aria-selected="false">Riwayat</button>
+    </div>
+    <div class="sub on" id="sub-tunggu">
+      <p class="date" id="izin-count"></p>
+      <div id="izin-list"></div>
+    </div>
+    <div class="sub" id="sub-rwy">
+      <div class="log-bar rwy-bar">
+        <div><label for="rw-dari">Dari tanggal</label><input id="rw-dari" type="date"></div>
+        <div><label for="rw-sampai">Sampai tanggal</label><input id="rw-sampai" type="date"></div>
+        <div><label for="rw-jenis">Jenis</label><select id="rw-jenis">
+          <option value="">Semua jenis</option><option value="absen">Absen luar area / GPS lemah / kios</option><option value="sakit">Sakit</option>
+          <option value="izin">Izin</option><option value="cuti">Cuti</option><option value="lupa">Lupa absen</option></select></div>
+        <div><label for="rw-status">Status</label><select id="rw-status">
+          <option value="">Semua status</option><option value="terima">Disetujui</option><option value="tolak">Ditolak</option><option value="menunggu">Menunggu</option></select></div>
+        <div><label for="rw-cari">Cari</label><input id="rw-cari" type="search" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="nama, alasan, catatan, penyetuju…"></div>
+        <div style="align-self:end"><button class="small" id="rw-go" style="width:100%">Tampilkan</button></div>
+      </div>
+      <div class="rwy-ringkas" id="rw-ringkas"></div>
+      <div id="rw-list"></div>
+      <button class="small alt" id="rw-csv" hidden>Unduh CSV</button>
+    </div>
+  </section>
+
+  <section id="tab-hari">
+    <div class="judul-pt"><h1>Laporan</h1>
+    <div class="pt-pilih" hidden><label>Perusahaan</label><select class="pt-pilih-sel" aria-label="Pilih perusahaan"></select></div>
+    </div>
+    <div class="subtabs" role="tablist">
+      <button role="tab" data-s="sub-hari" aria-selected="true">Hari ini</button>
+      <button role="tab" data-s="sub-rekap" aria-selected="false">Rekap absensi</button>
+      <button role="tab" data-s="sub-lembur" data-mode="lembur" aria-selected="false">Cek lembur<span class="lb-hit" data-hit="lembur"></span></button>
+      <button role="tab" data-s="sub-lembur" data-mode="lupa" aria-selected="false">Lupa absen<span class="lb-hit" data-hit="lupa"></span></button>
+      <button role="tab" data-s="sub-log" aria-selected="false" id="tab-log-btn" hidden>Log aktivitas</button>
+      <button role="tab" data-s="sub-cekhp" aria-selected="false" id="tab-cekhp-btn" hidden>Cek HP</button>
+    </div>
+    <div class="sub on" id="sub-hari">
+      <div class="log-bar hr-bar">
+        <div><label for="hr-tgl">Tanggal</label><input id="hr-tgl" type="date"></div>
+        <div><label for="hr-cari">Cari</label><input id="hr-cari" type="search" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="nama karyawan…"></div>
+        <div><label for="hr-tampil">Tampilkan</label><select id="hr-tampil"><option value="">Semua karyawan</option><option value="hadir">Yang sudah absen</option><option value="belum">Yang belum absen</option></select></div>
+        <div style="align-self:end"><div class="btns" style="margin:0"><button type="button" class="small alt" id="hr-cetak">Cetak</button><button type="button" class="small alt" id="hr-csv">Unduh CSV</button></div></div>
+      </div>
+      <p class="date" id="hr-info"></p>
+      <div class="tablewrap" id="hari-tabel"></div>
+      <details class="hr-rinci"><summary id="hari-count">Semua catatan absen hari ini</summary>
+        <ul class="log" id="hari-list"></ul>
+      </details>
+    </div>
+    <div class="sub" id="sub-rekap">
+      <div class="g-bar">
+        <div class="g-f"><label for="l-bulan">Periode</label><input id="l-bulan" type="month"></div>
+        <button class="small" id="l-go">Tampilkan</button>
+        <span class="import-bar" id="imp-bar" hidden><button type="button" class="small alt" id="imp-buka" title="Khusus superadmin · masuk ke perusahaan yang sedang dipilih">📥 Import absensi (Excel)</button></span>
+      </div>
+      <div id="imp-form" hidden></div>
+      <p class="meta g-sub" id="l-info"></p>
+      <div id="l-out"></div>
+    </div>
+    <div class="sub" id="sub-lembur">
+      <div class="log-bar">
+        <div><label for="lb-bulan">Periode</label><input id="lb-bulan" type="month"></div>
+        <div><label for="lb-cari">Cari</label><input id="lb-cari" type="search" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="nama karyawan…"></div>
+        <div><label for="lb-filter">Tampilkan</label><select id="lb-filter">
+          <option value="belum">Belum dicek</option><option value="semua">Semua</option><option value="lembur">Disetujui lembur</option><option value="lupa">Lupa absen pulang</option><option value="bawah" id="lb-opsi-bawah" hidden>Di bawah batas lembur (superadmin)</option></select></div>
+        <div id="lb-shift-wrap" hidden><label for="lb-shift">Shift</label><select id="lb-shift"><option value="">Semua shift</option></select></div>
+      </div>
+      <p class="meta" id="lb-info" style="margin:6px 0 4px"></p>
+      <p style="margin:0 0 10px" id="lb-ulang-wrap"><button type="button" class="small alt" id="lb-hitung-ulang" title="Samakan jam lembur yang sudah disetujui dengan aturan lembur sekarang (Gaji > Aturan)">🔄 Hitung ulang jam lembur yang sudah disetujui</button> <span class="msg" id="lb-msg" role="status"></span></p>
+      <div id="lb-list"></div>
+    </div>
+    <div class="sub" id="sub-cekhp">
+      <div class="log-bar">
+        <div><label for="ch-cari">Cari</label><input id="ch-cari" type="search" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="nama karyawan…"></div>
+        <div><label for="ch-filter">Tampilkan</label><select id="ch-filter"><option value="">Semua karyawan</option><option value="bad">Yang bermasalah</option><option value="belum">Belum pernah cek</option></select></div>
+      </div>
+      <p class="date" id="ch-info"></p>
+      <div id="ch-list"></div>
+    </div>
+    <div class="sub" id="sub-log">
+      <div class="log-bar">
+        <div><label for="log-tgl">Tanggal</label><input id="log-tgl" type="date"></div>
+        <div><label for="log-cari">Cari</label><input id="log-cari" type="search" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="nama, aksi, keterangan…"></div>
+        <div><label for="log-jenis">Jenis</label><select id="log-jenis">
+          <option value="">Semua</option><option value="login|buka|logout">Login & logout</option><option value="absen">Absen</option>
+          <option value="setujui|tolak">Persetujuan</option><option value="izin">Izin & sakit</option><option value="akun">Akun karyawan</option>
+          <option value="pengaturan|perusahaan">Pengaturan</option><option value="gaji">Gaji & slip</option><option value="ekspor">Cetak & unduh</option></select></div>
+      </div>
+      <p class="date" id="log-info"></p>
+      <ul class="log" id="log-list"></ul>
+      <button class="small alt" id="log-csv" hidden>Unduh CSV</button>
+    </div>
+  </section>
+
+  <section id="tab-kar">
+    <div class="judul-pt"><h1>Karyawan</h1>
+    <div class="pt-pilih" hidden><label>Perusahaan</label><select class="pt-pilih-sel" aria-label="Pilih perusahaan"></select></div>
+    </div>
+    <div class="kar-bar">
+      <input id="k-cari" type="search" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="Cari nama, username, jabatan…" aria-label="Cari karyawan">
+      <select id="k-filter" aria-label="Saring status"><option value="aktif">Aktif</option><option value="nonaktif">Nonaktif</option><option value="berhenti">Berhenti</option><option value="semua">Semua</option></select>
+      <select id="k-peran-f" aria-label="Saring peran"><option value="">Semua peran</option></select>
+      <select id="k-lok-f" aria-label="Saring lokasi kerja"><option value="">Semua lokasi</option></select>
+      <select id="k-cv-f" aria-label="Saring Group CV" hidden><option value="">Semua Group CV</option></select>
+      <select id="k-proy-f" aria-label="Saring proyek"><option value="">Semua proyek</option></select>
+      <button class="small" id="k-tambah-btn">Tambah karyawan</button>
+    </div>
+    <p class="date" id="k-info"></p>
+
+    <div class="card" id="pengguna-wrap" hidden>
+      <h3 class="tb-judul">1. Akun login</h3>
+      <label for="u-nama">Nama lengkap *</label><input id="u-nama" autocomplete="off">
+      <div class="grid2">
+        <div><label for="u-user">Username *</label><input id="u-user" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="contoh: budi">
+          <div class="meta" id="u-cek" aria-live="polite"></div><div class="meta" id="u-demo-info" hidden></div></div>
+        <div><label for="u-pass">Password awal *</label><input id="u-pass" autocomplete="new-password" placeholder="min. 8 karakter"></div>
+      </div>
+      <div id="u-saran-wrap" hidden><span class="meta">Saran username tersedia:</span><div class="saran" id="u-saran"></div></div>
+      <div class="msg bad" id="u-mirip" hidden></div>
+      <label for="u-role">Peran *</label>
+      <select id="u-role"></select>
+      <p class="meta" style="margin:6px 0 0">Username unik untuk semua akun. Kalau sudah dipakai, tambahkan angka atau singkatan, misalnya <b>budi2</b>.</p>
+
+      <h3 class="tb-judul">2. Data karyawan</h3>
+      <div class="grid2">
+        <div><label for="u-nik">Nomor induk</label><input id="u-nik" autocomplete="off"></div>
+        <div><label for="u-jabatan">Jabatan</label><input id="u-jabatan" autocomplete="off"></div>
+        <div><label for="u-divisi">Divisi</label><input id="u-divisi" autocomplete="off"></div>
+        <div><label for="u-hp">No. HP</label><input id="u-hp" type="tel" inputmode="tel" autocomplete="off"></div>
+        <div><label for="u-masuk">Tanggal masuk</label><input id="u-masuk" type="date"></div>
+        <div id="u-shift-wrap"><label for="u-shift">Shift kerja</label><select id="u-shift"></select></div>
+        <div><label for="u-cv">Group CV</label><select id="u-cv" class="pilih-cv"></select></div>
+        <div><label for="u-proy">Proyek</label><select id="u-proy" class="pilih-proy"></select></div>
+        <div><label for="u-kehadiran">Perhitungan kehadiran</label><select id="u-kehadiran">
+          <option value="">Absen aplikasi</option><option value="manual">Manual (upload Excel)</option><option value="tidak">Tidak dihitung (tidak masuk gaji &amp; rekap)</option></select></div>
+      </div>
+      <label for="u-alamat">Alamat</label><textarea id="u-alamat" rows="2"></textarea>
+      <div id="u-lokasi"></div>
+
+      <div id="u-gaji-wrap">
+        <h3 class="tb-judul">3. Data gaji <span class="meta">(bisa diisi nanti di menu Gaji)</span></h3>
+        <div class="grid2">
+          <div><label for="u-gp" id="u-gp-label">Gaji pokok</label><input id="u-gp" inputmode="numeric" data-num="int"></div>
+          <div><label for="u-um">Uang makan / hari</label><input id="u-um" inputmode="numeric" data-num="int" placeholder="ikut aturan"></div>
+          <div><label for="u-tj">Tunj. jabatan</label><input id="u-tj" inputmode="numeric" data-num="int"></div>
+          <div><label for="u-tt">Tunj. transport</label><input id="u-tt" inputmode="numeric" data-num="int"></div>
+          <div><label for="u-tl">Tunj. lainnya</label><input id="u-tl" inputmode="numeric" data-num="int"></div>
+          <div><label for="u-mode">Cara hitung gaji</label><select id="u-mode">
+            <option value="">Ikut aturan perusahaan</option><option value="prorata">Berdasarkan hari kerja</option>
+            <option value="harian">Upah harian</option><option value="operator">Operator (harian + jam siang + lembur)</option><option value="bulanan">Bulanan tetap</option></select></div>
+        </div>
+        <div class="grid2">
+          <div><label for="u-bank">Bank</label><input id="u-bank" list="daftar-bank" placeholder="mis. BCA" autocomplete="off"></div>
+          <div><label for="u-rek">No. rekening</label><input id="u-rek" inputmode="numeric" autocomplete="off" placeholder="angka saja"></div>
+        </div>
+        <label for="u-an">Atas nama rekening</label><input id="u-an" autocomplete="off" placeholder="sama dengan nama lengkap">
+        <div class="ikut ikut-bpjs" style="margin-top:12px"><span class="meta">Ikut BPJS</span>
+          <label class="check"><input type="checkbox" id="u-kes" checked> Kesehatan</label>
+          <label class="check"><input type="checkbox" id="u-jht" checked> JHT</label>
+          <label class="check"><input type="checkbox" id="u-jp" checked> JP</label></div>
+        <div class="ikut ikut-pajak"><span class="meta">Pajak</span>
+          <label class="check"><input type="checkbox" id="u-pph" checked> Kena PPh 21</label></div>
+      </div>
+
+      <div class="btns" style="margin-top:16px"><button class="small" id="u-add">Simpan karyawan</button><button class="small alt" id="u-batal">Batal</button></div>
+      <div class="msg" id="u-msg" role="status"></div>
+    </div>
+
+    <div class="kelola-baris">
+    <details class="card peran-kelola" id="peran-wrap" hidden>
+      <summary><b>Peran &amp; akses</b> <span class="meta" id="peran-ringkas"></span></summary>
+      <p class="meta" style="margin:8px 0 10px">Peran bawaan dikunci 🔒. Tambahkan peran lain (misalnya Kepala Gudang, Kasir, HRD) dan pilih tingkat aksesnya.
+        <b>Setara Karyawan</b>: hanya absen. <b>Setara Supervisor</b>: menyetujui izin, melihat laporan, menambah karyawan.</p>
+      <div id="peran-list"></div>
+      <div class="btns" style="margin-top:10px"><button type="button" class="small alt" id="peran-tambah">Tambah peran</button>
+        <button type="button" class="small" id="peran-simpan">Simpan peran</button></div>
+      <div class="msg" id="peran-msg" role="status"></div>
+    </details>
+
+    <details class="card peran-kelola" id="cv-wrap" hidden>
+      <summary><b>Group CV</b> <span class="meta" id="cv-ringkas"></span></summary>
+      <p class="meta" style="margin:8px 0 10px">Daftar CV / kelompok usaha tempat karyawan bernaung (mis. CV Maju Jaya, CV Samudra). Pilih Group CV saat Tambah atau Edit karyawan.</p>
+      <div id="cv-list"></div>
+      <div class="btns" style="margin-top:10px"><button type="button" class="small alt" id="cv-tambah">Tambah Group CV</button>
+        <button type="button" class="small" id="cv-simpan">Simpan Group CV</button></div>
+      <div class="msg" id="cv-msg" role="status"></div>
+    </details>
+
+    <details class="card peran-kelola" id="proy-wrap" hidden>
+      <summary><b>Proyek</b> <span class="meta" id="proy-ringkas"></span></summary>
+      <p class="meta" style="margin:8px 0 10px">Daftar proyek / pekerjaan tempat karyawan ditugaskan (mis. Proyek Jalan Tol, Landfill). Pilih proyek saat Tambah atau Edit karyawan, lalu saring daftar karyawan per proyek.</p>
+      <div id="proy-list"></div>
+      <div class="btns" style="margin-top:10px"><button type="button" class="small alt" id="proy-tambah">Tambah proyek</button>
+        <button type="button" class="small" id="proy-simpan">Simpan proyek</button></div>
+      <div class="msg" id="proy-msg" role="status"></div>
+    </details>
+    </div>
+
+    <div id="pengguna-list"></div>
+  </section>
+
+  <section id="tab-gaji">
+    <div class="judul-pt"><h1>Gaji</h1>
+    <div class="pt-pilih" hidden><label>Perusahaan</label><select class="pt-pilih-sel" aria-label="Pilih perusahaan"></select></div>
+    </div>
+    <div class="subtabs" role="tablist">
+      <button role="tab" data-s="sub-hitung" aria-selected="true">Hitung</button>
+      <button role="tab" data-s="sub-riwayat" aria-selected="false">Riwayat</button>
+      <button role="tab" data-s="sub-karyawan" aria-selected="false">Karyawan</button>
+      <button role="tab" data-s="sub-pinjaman" aria-selected="false">Pinjaman</button>
+      <button role="tab" data-s="sub-aturan" aria-selected="false">Aturan</button>
+    </div>
+
+    <div class="sub" id="sub-pinjaman">
+      <p class="date">Pinjaman / kasbon karyawan. Angsurannya otomatis memotong gaji setiap periode dan tampil di slip.</p>
+      <div class="card pj-ringkas" id="pj-ringkas"></div>
+      <div class="filter-gaji pj-filter">
+        <div><label for="pj-cari">Cari</label><input id="pj-cari" placeholder="nama karyawan / keterangan"></div>
+        <div><label for="pj-jenis">Jenis</label><select id="pj-jenis"><option value="">Semua jenis</option><option value="karyawan">Pinjaman Karyawan</option><option value="sio">Pinjaman SIO</option></select></div>
+        <div><label for="pj-status">Status</label><select id="pj-status"><option value="aktif">Berjalan</option><option value="lunas">Lunas</option><option value="">Semua</option></select></div>
+      </div>
+      <button class="small" id="pj-tambah" style="margin:6px 0 12px">Tambah pinjaman</button>
+      <div id="pj-list"><p class="meta">Memuat…</p></div>
+      <div id="pj-form" hidden></div>
+    </div>
+
+    <div class="sub on" id="sub-hitung">
+    <div class="g-bar">
+      <div class="g-f"><label for="g-bulan">Periode</label><input id="g-bulan" type="month"></div>
+      <div class="g-f" hidden><label for="g-peran-f">Peran</label><select id="g-peran-f"><option value="">Semua peran</option></select></div>
+      <div class="g-f" hidden><label for="g-cv-f">Group CV</label><select id="g-cv-f"><option value="">Semua Group CV</option></select></div>
+      <button class="small" id="g-hitung">Hitung gaji</button>
+      <button type="button" class="small alt" id="g-manual">📤 Upload Excel</button>
+    </div>
+    <p class="meta g-sub"><span id="g-info"></span><span id="g-manual-info">Untuk karyawan yang tidak absen di aplikasi (mis. operator, supir).</span></p>
+    <div id="manual-form" hidden></div>
+    <div id="upl-pilih" hidden></div>
+    <div class="g-ringkas">
+      <div class="card" id="g-total" hidden></div>
+      <div class="g-aksi" id="g-bulk" hidden>
+        <button type="button" class="small alt" id="g-tabel-btn">📊 Tabel rincian</button>
+        <button class="small" id="g-print-all">🖨️ Cetak semua slip</button>
+        <button class="small alt" id="g-save-all">💾 Simpan semua ke karyawan</button>
+        <button class="small alt" id="g-kepajak" title="Gaji hasil hitungan ini dikirim ke menu Pajak &amp; BPJS untuk direview">➤ Kirim ke Pajak &amp; BPJS</button>
+      </div>
+    </div>
+    <div id="g-list"></div>
+    <div class="btns" style="margin-bottom:16px"><button class="small alt" id="g-csv" hidden>Unduh CSV</button>
+      <button class="small alt" id="g-pajak" hidden>Rekap BPJS &amp; PPh 21 (Excel)</button></div>
+    </div>
+
+    <div class="sub" id="sub-riwayat">
+      <p class="date">Slip yang sudah disimpan ke karyawan, 12 bulan terakhir.</p>
+      <label for="r-user">Karyawan</label><select id="r-user"></select>
+      <div class="card" id="r-total" hidden style="margin-top:14px"></div>
+      <button class="small" id="r-print-all" hidden style="width:100%;margin-bottom:14px">Cetak semua slip</button>
+      <div id="r-list"></div>
+    </div>
+
+    <div class="sub" id="sub-karyawan">
+      <p class="date" id="karyawan-info">Gaji pokok dan tunjangan per bulan.</p>
+      <div class="filter-gaji">
+        <div><label for="k-periode">Periode bonus</label><input id="k-periode" type="month"></div>
+        <div class="fg-peran"><label for="k-peran">Peran</label><select id="k-peran"><option value="">Semua peran</option></select></div>
+        <div class="fg-simpan"><button class="small" id="g-users-save">Simpan gaji</button></div>
+        <div><label for="k-lok">Lokasi kerja</label><select id="k-lok"><option value="">Semua lokasi</option></select></div>
+        <div><label for="k-mode-filter">Cara hitung gaji</label><select id="k-mode-filter">
+          <option value="">Semua cara hitung</option><option value="prorata">Berdasarkan hari kerja</option>
+          <option value="harian">Upah harian</option><option value="operator">Operator (harian + jam siang + lembur)</option><option value="bulanan">Bulanan tetap</option></select></div>
+        <p class="meta">Bonus hanya berlaku untuk periode ini. Kolom lain berlaku setiap bulan.</p>
+      </div>
+      <div class="manual-bar" hidden><button type="button" class="small alt" id="k-import">📥 Import data gaji (Excel)</button></div>
+      <div id="kimp-form" hidden></div>
+      <div id="g-users"><p class="meta">Memuat…</p></div>
+    </div>
+
+    <div class="sub" id="sub-aturan">
+      <h2 style="margin-top:4px">Dasar gaji pokok</h2>
+      <label for="a-modeGaji">Cara hitung</label>
+      <select id="a-modeGaji">
+        <option value="prorata">Berdasarkan hari kerja</option>
+        <option value="harian">Upah harian</option><option value="operator">Operator (harian + jam siang + lembur)</option>
+        <option value="bulanan">Bulanan tetap</option>
+      </select>
+      <div id="pembagi-wrap">
+        <label for="a-pembagi">Pembagi hari kerja</label>
+        <select id="a-pembagi">
+          <option value="0">Sesuai kalender bulan itu</option>
+          <option value="20">Tetap 20 hari</option><option value="21">Tetap 21 hari</option><option value="22">Tetap 22 hari</option>
+          <option value="25">Tetap 25 hari</option><option value="26">Tetap 26 hari</option>
+        </select>
+      </div>
+      <p class="meta" id="mode-info"></p>
+
+      <h2>Periode absensi & gaji</h2>
+      <label for="a-awalPeriode">Tanggal mulai periode</label>
+      <select id="a-awalPeriode"><option value="1">1 (awal bulan)</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option></select>
+      <p class="meta" id="periode-info" style="margin:4px 0 0"></p>
+
+      <h2>Jam kerja</h2>
+      <div class="grid2">
+        <div><label for="a-jamMasuk">Jam masuk</label><input id="a-jamMasuk" type="text" class="jam24" inputmode="numeric" maxlength="5" placeholder="08:00" autocomplete="off"></div>
+        <div><label for="a-jamPulang">Jam pulang</label><input id="a-jamPulang" type="text" class="jam24" inputmode="numeric" maxlength="5" placeholder="17:00" autocomplete="off"></div>
+      </div>
+      <div class="grid2">
+        <div><label for="a-toleransi">Toleransi telat (menit)</label><input id="a-toleransi" inputmode="numeric" data-num="int"></div>
+        <div><label for="a-telatPerKejadian">Denda telat per hari (Rp)</label><input id="a-telatPerKejadian" inputmode="numeric" data-num="int" placeholder="mis. 10.000"></div>
+        <div><label for="a-hariKerja">Hari kerja</label>
+          <select id="a-hariKerja"><option value="5">Senin–Jumat</option><option value="6">Senin–Sabtu</option></select></div>
+        <p class="meta" style="grid-column:1/-1;margin:-4px 0 4px">Denda telat = jumlah hari telat × denda per hari (masuk lewat dari jam masuk + toleransi).</p>
+      </div>
+      <label class="check" style="margin-top:12px"><input type="checkbox" id="a-liburNasional" checked> <span><b>Libur nasional otomatis</b> (sesuai daftar libur; bawaan SKB 3 Menteri 2026 &amp; 2027)</span></label>
+      <label class="check"><input type="checkbox" id="a-cutiBersama"> <span>Cuti bersama juga libur <span class="meta">(untuk swasta bersifat pilihan & memotong cuti tahunan)</span></span></label>
+      <button type="button" class="small alt" id="lihat-libur" style="margin-top:6px">📅 Kelola daftar libur</button>
+      <p class="meta libur-peringatan" id="libur-info" hidden></p>
+      <label for="a-libur">Libur khusus perusahaan (satu per baris, tanggal dd/mm/yy, boleh diberi keterangan)</label>
+      <textarea id="a-libur" rows="3" placeholder="20/10/26 Ulang tahun perusahaan"></textarea>
+      <div id="daftar-libur" hidden></div>
+
+      <h2>Shift kerja</h2>
+      <p class="meta" style="margin:0 0 6px">Jam kerja di atas adalah <b>jam kerja utama</b>. Tambahkan shift lain kalau ada (misalnya Pagi, Siang, Malam), lalu pilih shift tiap karyawan di menu <b>Karyawan > Edit</b>. Shift yang melewati tengah malam otomatis dihitung ke hari kerja sebelumnya.</p>
+      <div id="shift-list"></div>
+      <button type="button" class="small alt" id="shift-tambah">Tambah shift</button>
+
+      <h2>Tunjangan harian</h2>
+      <div class="grid2">
+        <div><label for="a-uangMakan">Uang makan / hari (Rp)</label><input id="a-uangMakan" inputmode="numeric" data-num="int"></div>
+        <div><label for="a-transport">Transport / hari (Rp)</label><input id="a-transport" inputmode="numeric" data-num="int"></div>
+      </div>
+
+      <h2>Potongan</h2>
+      <input id="a-telatPerMenit" type="hidden" value="0">
+      <label class="check" id="potongAlpha-wrap"><input type="checkbox" id="a-potongAlpha"> Potong gaji pokok per hari tidak hadir</label>
+      <div id="alphaCV-wrap" class="alphacv"><span class="meta"><b>Tidak hadir tidak dipotong</b> (gaji hari itu tetap dibayar) untuk Group CV:</span> <span id="alphaCV-list"></span></div>
+      <label class="check"><input type="checkbox" id="a-potongIzin"> <span id="izin-label">Potong gaji pokok per hari izin (sakit tidak dipotong)</span></label>
+      <div class="grid2" style="margin-top:8px">
+        <div><label for="a-jatahCuti">Jatah cuti tahunan (hari kerja)</label><input id="a-jatahCuti" inputmode="numeric" data-num="int" placeholder="12"></div>
+        <p class="meta" style="align-self:end;margin:0 0 8px">Cuti yang disetujui tetap dibayar dan tidak dihitung tidak hadir.</p>
+      </div>
+
+      <h2>Lembur</h2>
+      <label class="check"><input type="checkbox" id="a-lemburAktif"> Hitung lembur dari jam absen pulang</label>
+      <label class="check"><input type="checkbox" id="a-lemburSetuju"> <span>Lembur perlu disetujui (di <b>Laporan > Cek lembur</b>)</span></label>
+      <div class="grid2">
+        <div><label for="a-lemburMode">Cara hitung</label>
+          <select id="a-lemburMode"><option value="depnaker">Aturan pemerintah (1/173)</option><option value="tetap">Tarif tetap per jam</option></select></div>
+        <div><label for="a-lemburTarif">Tarif tetap / jam (Rp)</label><input id="a-lemburTarif" inputmode="numeric" data-num="int"></div>
+      </div>
+      <div class="grid2">
+        <div><label for="a-lemburMulaiMenit">Lembur mulai: jam pulang + (menit)</label><input id="a-lemburMulaiMenit" inputmode="numeric" data-num="int" placeholder="0"></div>
+        <div><label for="a-lemburMinMenit">Minimal lembur dihitung (menit)</label><input id="a-lemburMinMenit" inputmode="numeric" data-num="int"></div>
+      </div>
+      <p class="meta" id="lembur-mulai-info" style="margin:4px 0 0"></p>
+
+      <h2>Lebih HK <span class="meta" style="font-weight:400">(masuk di tanggal merah / hari libur)</span></h2>
+      <div class="grid2">
+        <div><label for="a-lebihHKMode">Uang Lebih HK</label>
+          <select id="a-lebihHKMode"><option value="">Tidak dibayar (hanya dihitung)</option><option value="hari">Dibayar per hari</option><option value="jam">Dibayar per jam</option></select></div>
+        <div><label for="a-liburLembur">Jam kerja di hari libur</label>
+          <select id="a-liburLembur"><option value="">Dihitung Lebih HK</option><option value="lembur">Dihitung lembur</option></select></div>
+        <div id="lebihHK-tarif-wrap"><label for="a-lebihHKTarif" id="lebihHK-tarif-label">Tarif per hari (Rp)</label><input id="a-lebihHKTarif" inputmode="numeric" data-num="int" placeholder="kosong = otomatis"></div>
+      </div>
+      <p class="meta" id="lebihHK-info"></p>
+
+      <h2>Cara hitung BPJS &amp; PPh 21</h2>
+      <label class="check"><input type="checkbox" id="a-potonganManual"> <span><b>BPJS &amp; PPh 21 diisi manual per karyawan</b> <span class="meta">(hitungan otomatis dimatikan; kolom "Ikut BPJS" &amp; "Kena PPh 21" disembunyikan)</span></span></label>
+
+      <h2>Kolom gaji tambahan</h2>
+      <p class="meta" style="margin-top:0">Kolom isian khusus perusahaan ini yang muncul di <b>Gaji &gt; Karyawan</b> (mis. BPJS, PPh 21, Uang JS, Pinjaman, U Ker). Nilainya masuk ke slip sebagai potongan atau tambahan.</p>
+      <div id="kolom-list"></div>
+      <div class="btns" style="margin-top:6px"><button type="button" class="small alt" id="kolom-tambah">Tambah kolom</button></div>
+      <label class="check" style="margin-top:10px"><input type="checkbox" id="a-tanpaKomponen"> <span><b>Sembunyikan "Komponen khusus"</b> <span class="meta">di Gaji &gt; Karyawan (isinya tidak dipakai dalam hitungan gaji)</span></span></label>
+
+      <div id="otomatis-pajak">
+      <h2>BPJS (bagian karyawan)</h2>
+      <div class="bpjs"><label class="check"><input type="checkbox" id="a-bpjsKes"> BPJS Kesehatan</label>
+        <div class="pctin"><input id="a-pctKes" inputmode="decimal" data-num="dec" data-dec="2" aria-label="Persen BPJS Kesehatan"></div></div>
+      <div class="bpjs"><label class="check"><input type="checkbox" id="a-bpjsJht"> BPJS TK – JHT</label>
+        <div class="pctin"><input id="a-pctJht" inputmode="decimal" data-num="dec" data-dec="2" aria-label="Persen JHT"></div></div>
+      <div class="bpjs"><label class="check"><input type="checkbox" id="a-bpjsJp"> BPJS TK – JP</label>
+        <div class="pctin"><input id="a-pctJp" inputmode="decimal" data-num="dec" data-dec="2" aria-label="Persen JP"></div></div>
+      <div class="grid2">
+        <div><label for="a-capKes">Batas upah BPJS Kes (Rp)</label><input id="a-capKes" inputmode="numeric" data-num="int"></div>
+        <div><label for="a-capJp">Batas upah JP (Rp)</label><input id="a-capJp" inputmode="numeric" data-num="int"></div>
+      </div>
+      <p class="meta">Cek batas upah terbaru di situs BPJS, angkanya berubah tiap tahun. </p>
+
+      <h2>BPJS (bagian perusahaan)</h2>
+      <p class="meta" style="margin-top:0">Tidak memotong gaji. Tampil di slip sebagai "Ditanggung perusahaan" dan di rekap BPJS. Premi JKK, JKM &amp; BPJS Kesehatan perusahaan ikut dihitung sebagai penghasilan bruto PPh 21.</p>
+      <div class="grid2">
+        <div><label for="a-pctKesP">BPJS Kesehatan (%)</label><input id="a-pctKesP" inputmode="decimal" data-num="dec" data-dec="2"></div>
+        <div><label for="a-pctJhtP">JHT (%)</label><input id="a-pctJhtP" inputmode="decimal" data-num="dec" data-dec="2"></div>
+        <div><label for="a-pctJpP">JP (%)</label><input id="a-pctJpP" inputmode="decimal" data-num="dec" data-dec="2"></div>
+        <div><label for="a-pctJkm">JKM (%)</label><input id="a-pctJkm" inputmode="decimal" data-num="dec" data-dec="2"></div>
+        <div><label for="a-pctJkk">JKK (%) sesuai tingkat risiko</label><input id="a-pctJkk" inputmode="decimal" data-num="dec" data-dec="2"></div>
+      </div>
+      <p class="meta">JKK menurut tingkat risiko kerja: 0,24% sangat rendah · 0,54% rendah · 0,89% sedang · 1,27% tinggi · 1,74% sangat tinggi. Isi sesuai yang tertera di tagihan BPJS Ketenagakerjaan perusahaan (bisa lebih kecil bila ada potongan iuran dari pemerintah).</p>
+
+      <h2>PPh 21</h2>
+      <label class="check"><input type="checkbox" id="a-pphAktif"> Potong PPh 21</label>
+      <label for="a-pphMetode">Cara hitung</label>
+      <select id="a-pphMetode">
+        <option value="ter">Otomatis TER (PP 58/2023) – disarankan</option>
+        <option value="tarif">Tarif rata (persen sama untuk semua)</option>
+      </select>
+      <p class="meta" id="ter-info">Januari–November: penghasilan bruto × tarif efektif (TER) kategori A/B/C sesuai status PTKP tiap karyawan. Desember (dan bulan terakhir karyawan berhenti): dihitung setahun dengan tarif pasal 17 dikurangi PPh yang sudah dipotong, dari slip yang sudah disimpan. Isi status PTKP di Gaji &gt; Karyawan.</p>
+      <div id="tarif-rata">
+      <div class="bpjs"><span class="meta">Tarif rata</span>
+        <div class="pctin"><input id="a-pctPph" inputmode="decimal" data-num="dec" data-dec="2" aria-label="Persen PPh 21"></div></div>
+      <label for="a-dasarPph">Dasar potongan</label>
+      <select id="a-dasarPph">
+        <option value="bruto">Penghasilan bruto</option>
+        <option value="neto">Bruto dikurangi iuran JHT &amp; JP karyawan</option>
+      </select>
+      <p class="meta">Tarif rata untuk semua karyawan yang dicentang "PPh 21" di sub-tab Karyawan. Sejak 2024 PPh 21 bulanan resmi memakai tarif efektif (TER) sesuai status PTKP; pilih "Otomatis TER" supaya dihitung sesuai aturan.</p>
+      </div>
+      </div>
+      <button class="small" id="g-aturan-save" style="width:100%;margin-top:10px">Simpan aturan</button>
+    </div>
+    <div class="msg" id="msg3" role="status"></div>
+  </section>
+
+  <section id="tab-pajak">
+    <div class="judul-pt"><h1>Pajak &amp; BPJS</h1></div>
+    <div class="subtabs" role="tablist">
+      <button role="tab" data-s="sub-pj-kerja" aria-selected="true">Kertas kerja</button>
+      <button role="tab" data-s="sub-pj-data" aria-selected="false">Data karyawan</button>
+      <button role="tab" data-s="sub-pj-atur" aria-selected="false">Pengaturan</button>
+    </div>
+    <div class="sub on" id="sub-pj-kerja">
+      <div class="g-bar">
+        <div class="g-f"><label for="pjk-bulan">Masa pajak</label><input id="pjk-bulan" type="month"></div>
+        <button class="small" id="pjk-go">Tampilkan</button>
+      </div>
+      <p class="meta" id="pjk-info">PPh 21 TER (PP 58/2023) &amp; iuran BPJS per karyawan per bulan. Gaji bisa diambil dari slip gaji yang sudah disimpan, diketik langsung, atau di-upload dari Excel.</p>
+      <div class="btns pjk-aksi" id="pjk-aksi" hidden>
+        <button type="button" class="small alt" id="pjk-slip">Ambil dari slip gaji</button>
+        <button type="button" class="small alt" id="pjk-upload">Upload Excel gaji</button><input type="file" id="pjk-file" accept=".xlsx,.csv" hidden>
+        <button type="button" class="small alt" id="pjk-template">Template Excel</button>
+        <button type="button" class="small" id="pjk-simpan">Simpan</button>
+        <button type="button" class="small" id="pjk-kirim">Kirim ke slip karyawan</button>
+        <button type="button" class="small alt" id="pjk-xlsx">Unduh kertas kerja</button>
+        <button type="button" class="small alt" id="pjk-bpjs">Rekap BPJS setahun</button>
+      </div>
+      <div class="msg" id="pjk-msg" role="status"></div>
+      <div id="pjk-out"></div>
+    </div>
+    <div class="sub" id="sub-pj-data">
+      <p class="meta" style="margin-top:0">Data pajak tiap karyawan: status kepegawaian, jenis kelamin, NIK (untuk NITKU / Coretax), status PTKP, dan kepesertaan BPJS. Upah BPJS khusus diisi kalau berbeda dari pengaturan.</p>
+      <div class="pjd-bar"><input id="pjd-cari" type="search" autocomplete="off" placeholder="Cari nama…" aria-label="Cari karyawan">
+        <button type="button" class="small alt" id="pjd-import">Import dari Excel kertas kerja</button><input type="file" id="pjd-file" accept=".xlsx" hidden></div>
+      <div id="pjd-out"></div>
+      <div class="btns" style="margin-top:10px"><button type="button" class="small" id="pjd-simpan">Simpan data karyawan</button></div>
+      <div class="msg" id="pjd-msg" role="status"></div>
+    </div>
+    <div class="sub" id="sub-pj-atur">
+      <div class="row">
+        <label for="pja-dasar">Dasar upah BPJS</label>
+        <select id="pja-dasar"><option value="tetap">Angka tetap untuk semua (mis. UMK)</option><option value="gaji">Gaji yang diisi bulan itu</option></select>
+        <div id="pja-upah-wrap"><label for="pja-upah">Upah dasar BPJS (Rp)</label><input id="pja-upah" inputmode="numeric" data-num="int" placeholder="mis. 3.998.180"></div>
+        <h2>Iuran BPJS (%)</h2>
+        <div class="grid2">
+          <div><label for="pja-kesP">Kesehatan – perusahaan</label><input id="pja-kesP" inputmode="decimal" data-num="dec" data-dec="2"></div>
+          <div><label for="pja-kesK">Kesehatan – karyawan</label><input id="pja-kesK" inputmode="decimal" data-num="dec" data-dec="2"></div>
+          <div><label for="pja-jhtP">JHT – perusahaan</label><input id="pja-jhtP" inputmode="decimal" data-num="dec" data-dec="2"></div>
+          <div><label for="pja-jhtK">JHT – karyawan</label><input id="pja-jhtK" inputmode="decimal" data-num="dec" data-dec="2"></div>
+          <div><label for="pja-jpP">JP – perusahaan</label><input id="pja-jpP" inputmode="decimal" data-num="dec" data-dec="2"></div>
+          <div><label for="pja-jpK">JP – karyawan</label><input id="pja-jpK" inputmode="decimal" data-num="dec" data-dec="2"></div>
+          <div><label for="pja-jkk">JKK (sesuai tingkat risiko)</label><input id="pja-jkk" inputmode="decimal" data-num="dec" data-dec="2"></div>
+          <div><label for="pja-jkm">JKM</label><input id="pja-jkm" inputmode="decimal" data-num="dec" data-dec="2"></div>
+          <div><label for="pja-capKes">Batas upah BPJS Kes (Rp)</label><input id="pja-capKes" inputmode="numeric" data-num="int"></div>
+          <div><label for="pja-capJp">Batas upah JP (Rp)</label><input id="pja-capJp" inputmode="numeric" data-num="int"></div>
+        </div>
+        <p class="meta">Yang menambah penghasilan bruto PPh 21: JKK, JKM, dan BPJS Kesehatan bagian perusahaan. JHT &amp; JP bagian karyawan mengurangi penghasilan neto saat dihitung setahun (Desember).</p>
+        <button class="small" id="pja-simpan" style="margin-top:10px">Simpan pengaturan</button>
+        <div class="msg" id="pja-msg" role="status"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-pt">
+    <h1>Perusahaan</h1>
+    <p class="date">Khusus superadmin. Pilih perusahaan yang ingin dikelola, atau tambah perusahaan baru.</p>
+    <div id="pt-list"></div>
+    <h2>Tambah perusahaan</h2>
+    <div class="row">
+      <label for="pt-nama">Nama perusahaan</label><input id="pt-nama" placeholder="contoh: PT Cahaya Sinar Mandiri">
+      <label for="pt-kode">Kode perusahaan</label>
+      <input id="pt-kode" style="text-transform:uppercase" autocapitalize="characters" placeholder="contoh: CSM">
+      <p class="meta" style="margin:4px 0 0">3–10 huruf/angka, sebagai pengenal perusahaan. Tidak bisa diganti.</p>
+      <label class="check" style="margin-top:10px"><input type="checkbox" id="pt-coba" checked> <span>Masa coba gratis <input id="pt-coba-hari" type="number" min="1" max="90" value="14" style="width:64px;display:inline-block;padding:4px 6px;min-height:0"> hari (lewat dari itu admin &amp; karyawan otomatis terkunci, data tetap aman)</span></label>
+      <button class="small" id="pt-add" style="margin-top:12px">Tambah perusahaan</button>
+    </div>
+    <div id="lama-wrap" hidden>
+      <h2>Akun lama tanpa perusahaan</h2>
+      <div class="row"><p id="lama-info" style="margin-top:0"></p>
+        <button class="small alt" id="lama-go">Hubungkan ke perusahaan aktif</button></div>
+    </div>
+    <div class="msg" id="msg-pt" role="status"></div>
+  </section>
+
+  <section id="tab-atur">
+    <h1>Pengaturan</h1>
+    <div class="atur-grid">
+      <div class="atur-kiri">
+
+    <h2>Akun saya</h2>
+    <div class="row">
+      <p class="meta" style="margin-top:0">Login sebagai <b id="ps-akun"></b>. Ganti password secara berkala, terutama untuk akun superadmin. <a href="privasi.html" target="_blank" rel="noopener">Kebijakan privasi</a> (ditunjukkan ke karyawan saat pertama memakai aplikasi).</p>
+      <!-- kolom username tersembunyi: supaya pengelola sandi browser mengisi ke sini, bukan ke kotak Cari karyawan -->
+      <input type="text" id="ps-user" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+      <label for="ps-lama">Password sekarang</label>
+      <div class="pw-wrap"><input id="ps-lama" type="password" autocomplete="current-password"></div>
+      <div class="grid2">
+        <div><label for="ps-baru">Password baru</label><input id="ps-baru" type="password" autocomplete="new-password" placeholder="min. 8 karakter"></div>
+        <div><label for="ps-ulang">Ulangi password baru</label><input id="ps-ulang" type="password" autocomplete="new-password"></div>
+      </div>
+      <p class="meta" style="margin:4px 0 0">Saran: minimal 12 karakter, campuran huruf besar, huruf kecil, angka, dan simbol.</p>
+      <div class="btns" style="margin-top:10px"><button type="button" class="small" id="ps-simpan">Ganti password saya</button></div>
+      <p class="msg" id="ps-msg" role="status"></p>
+    </div>
+
+    <h2>Perusahaan</h2>
+    <div class="row"><dl class="kv" id="pt-info" style="margin:0"></dl>
+      <button class="small alt" id="pt-edit" style="margin-top:10px">Edit perusahaan</button>
+      <div class="pt-form" id="pt-form-aktif" hidden></div>
+      <p class="meta" style="margin:8px 0 0">Kode perusahaan dipakai sistem untuk memisahkan data. Karyawan cukup login dengan username dan password.</p></div>
+
+    <div id="demo-wrap" hidden>
+      <h2>Data demo</h2>
+      <div class="row">
+        <p class="meta" style="margin-top:0">Isi 10 karyawan contoh beserta data gaji, absensi bulan lalu sampai hari ini, contoh izin/sakit, dan 2 absen di luar area yang menunggu persetujuan. Semua akun demo memakai password <b>demo1234</b> dan bisa dihapus sekaligus.</p>
+        <div class="grid2">
+          <div><label for="demo-nk">Jumlah karyawan</label><input id="demo-nk" type="number" min="1" max="10" value="10"></div>
+          <div><label for="demo-na">Jumlah absen</label><input id="demo-na" type="number" min="0" max="500" value="0"></div>
+        </div>
+        <p class="meta" style="margin:4px 0 10px">Jumlah absen <b>0</b> = otomatis sebulan penuh. Isi angka (misalnya 20) untuk absen acak dalam 3 minggu terakhir.</p>
+        <div class="btns"><button class="small" id="demo-isi">Isi data demo</button><button class="small alt" id="demo-hapus">Hapus data demo</button></div>
+        <div class="msg" id="demo-msg" role="status"></div>
+      </div>
+    </div>
+
+    <div id="akses-wrap" hidden>
+      <h2>Akses admin</h2>
+      <div class="row">
+        <p class="meta" style="margin-top:0">Khusus superadmin. Klik <b>Akses Menu</b> untuk mengatur menu (Persetujuan, Laporan, Karyawan, Gaji, Pajak) dan Group CV tiap admin. Karyawan &amp; supervisor tidak punya akses ke Gaji / Pajak.</p>
+        <div class="tablewrap" id="akses-tbl"></div>
+        <div class="msg" id="akses-msg" role="status"></div>
+      </div>
+    </div>
+
+    <div id="backup-wrap" hidden>
+      <h2>BackUp &amp; Restore</h2>
+      <div class="row">
+        <p class="meta" style="margin-top:0">Khusus superadmin, untuk perusahaan yang sedang aktif. <b>Auto BackUp</b> berjalan otomatis di server <b>setiap hari jam 23:00 WIB</b>
+          (tidak perlu membuka aplikasi). Hanya <b>30 backup terbaru</b> yang disimpan (manual + otomatis); yang lebih lama terhapus sendiri. Sebelum Restore, kondisi data saat itu selalu dicadangkan dulu. Daftar semua backup ada di <b>🕘 Histori BackUp</b>.</p>
+        <div class="btns">
+          <button type="button" class="small" id="bk-buat">💾 BackUp</button>
+          <button type="button" class="small alt" id="bk-daftar">🕘 Histori BackUp</button>
+          <button type="button" class="small alt" id="bk-restore-file">♻️ Restore</button><input type="file" id="bk-file" accept=".gz,.json,application/gzip,application/json" hidden>
+          <button type="button" class="small alt" id="bk-akun" title="Kembalikan akun karyawan yang terhapus (beserta data absen & gajinya) dari backup">👤 Pulihkan karyawan terhapus</button>
+          <button type="button" class="small alt" id="backup-xlsx" title="Salinan data dalam bentuk Excel (untuk dibaca, tidak untuk Restore)">📊 BackUp Excel</button>
+          <button type="button" class="small alt" id="backup-json" hidden>🗂️ Unduh backup JSON</button></div>
+        <div class="msg" id="backup-msg" role="status"></div>
+      </div>
+    </div>
+    <div id="bk-form" hidden></div>
+
+    <h2>Tampilan</h2>
+    <div class="row">
+      <label for="tema-pilih" style="margin-top:0">Tema</label>
+      <select id="tema-pilih"><option value="terang">Terang</option><option value="gelap">Gelap</option><option value="auto">Ikuti perangkat</option></select>
+      <label for="nama-perangkat">Nama perangkat ini (untuk log aktivitas)</label>
+      <input id="nama-perangkat" maxlength="40" placeholder="mis. PC Kasir, Laptop HRD, HP Rina" autocomplete="off">
+      <p class="meta" id="nama-perangkat-info" style="margin:4px 0 0"></p>
+      <p class="meta versi-app" style="margin:8px 0 0"></p>
+      <button type="button" class="small alt muat-ulang-app" style="margin-top:6px">🔄 Muat ulang aplikasi</button>
+
+      <p class="meta" style="margin:8px 0 6px">Dashboard memakai warna pastel acak setiap dibuka (tema terang).</p>
+      <button type="button" class="small alt" id="acak-warna">🎨 Acak warna</button>
+    </div>
+
+    <h2>Notifikasi</h2>
+    <div class="row">
+      <div class="state" id="s-notif"></div>
+      <p>Muncul di HP setiap ada yang perlu persetujuan: absen di luar area, GPS lemah, absen lewat kios, dan pengajuan izin / sakit / cuti / lupa absen baru. Tetap muncul meski aplikasi tertutup.</p>
+      <button class="small" id="notif-on">Aktifkan notifikasi</button>
+    </div>
+
+    <h2 id="kios-judul">Mode kios</h2>
+    <div class="row" id="kios-row">
+      <label class="check" id="kios-tampil-wrap" style="margin-top:0" hidden><input type="checkbox" id="kios-tampil"> <span><b>Tampilkan Mode kios</b> untuk admin &amp; supervisor perusahaan ini <span class="meta">(khusus superadmin)</span></span></label>
+      <div id="kios-isi">
+      <p class="meta" style="margin-top:0">Jadikan PC/tablet kantor yang punya webcam sebagai mesin absen bersama, untuk karyawan yang HP-nya rusak atau tidak punya HP. Buka link ini di perangkat kantor, lalu login sebagai admin/supervisor.</p>
+      <div class="link-kios"><code id="kios-url">…</code></div>
+      <div class="btns" style="margin-top:10px"><button type="button" class="small alt" id="kios-salin">📋 Salin link</button>
+        <a class="btn small" id="kios-buka" href="kios.html" target="_blank" rel="noopener">🖥️ Buka kios</a></div>
+      </div>
+    </div>
+
+    <h2>Verifikasi absen</h2>
+    <div class="row">
+      <label for="metode" style="margin-top:0">Metode verifikasi karyawan</label>
+      <select id="metode">
+        <option value="salah">Wajah atau sidik jari (salah satu)</option>
+        <option value="wajah">Wajah saja</option>
+        <option value="jari">Sidik jari saja</option>
+        <option value="keduanya">Wajah dan sidik jari (keduanya)</option>
+      </select>
+      <p class="meta" style="margin:6px 0 0">Uji wajah hidup dan foto selfie tetap berjalan di semua pilihan. Kalau diubah ke metode yang lebih ketat, karyawan yang belum mendaftarkan wajah/sidik jari yang diperlukan harus mendaftar dulu sebelum bisa absen.</p>
+      <label class="check" style="margin-top:12px"><input type="checkbox" id="pulih-otomatis"> <span><b>Pulihkan HP otomatis dengan verifikasi wajah</b> <span class="meta">— kalau data aplikasi terhapus / pasang ulang / ganti HP, karyawan cukup absen dengan wajah (dicocokkan dengan cadangan wajah di server) tanpa perlu admin Reset. Tercatat di Log aktivitas. Sidik jari tetap harus didaftar ulang.</span></span></label>
+      <label class="check" id="kios-sah-wrap" style="margin-top:8px"><input type="checkbox" id="kios-sah" checked> <span>Absen lewat <b>mode kios</b> langsung sah (tanpa persetujuan)</span></label>
+      <button class="small" id="metode-simpan" style="margin-top:10px">Simpan metode</button>
+
+    </div>
+
+      </div>
+      <div class="atur-kanan">
+    <h2>Lokasi absen</h2>
+    <div class="row">
+      <p class="meta" style="margin-top:0">Tambahkan semua tempat kerja, misalnya kantor, gudang, atau cabang. Karyawan dicocokkan ke lokasi terdekat. Hanya admin dan superadmin yang bisa mengubah.</p>
+      <div id="lok-list"><p class="meta">Memuat…</p></div>
+      <button class="small alt" id="lok-tambah" style="margin-top:4px">Tambah lokasi</button>
+      <label for="akurasi">Batas akurasi GPS untuk semua lokasi (meter)</label>
+      <input id="akurasi" inputmode="numeric" data-num="int" value="100">
+      <p class="meta" style="margin:4px 0 0">Absen dengan akurasi GPS lebih buruk dari batas ini harus disetujui admin/supervisor.</p>
+      <button class="small" id="save-gps" style="margin-top:12px;width:100%">Simpan semua lokasi</button>
+    </div>
+
+      </div>
+    </div>
+    <button class="small alt" id="logout" style="margin-top:8px" hidden>Keluar</button>
+    <div class="msg" id="msg2" role="status"></div>
+  </section>
+</main>
+
+<nav>
+  <div class="navbrand"><img src="icon.svg" alt=""><span class="nb-teks">Absensi Hadir</span><span class="versi-baris"><small class="versi-tampil"></small><button type="button" class="muat-ulang-app btn-perbarui" title="Perbarui / muat ulang ke versi terbaru" aria-label="Perbarui aplikasi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></svg></button>
+    <button type="button" class="nav-keluar" id="logout-nav" title="Keluar" aria-label="Keluar dari dashboard">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H5v16h4M14 8l4 4-4 4M18 12H8"/></svg></button></span></div>
+  <button data-tab="izin" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9.5"/></svg><span class="lbl-full">Persetujuan</span><span class="lbl-short">Setujui</span></button>
+  <button data-tab="hari"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/></svg><span>Laporan</span></button>
+  <button data-tab="kar" id="nav-kar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.8c1.7.8 2.7 2.5 3 5.2"/></svg><span>Karyawan</span></button>
+  <button data-tab="gaji" id="nav-gaji" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/></svg><span>Gaji</span></button>
+  <button data-tab="pajak" id="nav-pajak" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg><span class="lbl-full">Pajak &amp; BPJS</span><span class="lbl-short">Pajak</span></button>
+  <button data-tab="pt" id="nav-pt" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4"/></svg><span class="lbl-full">Perusahaan</span><span class="lbl-short">PT</span></button>
+  <button data-tab="atur"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="lbl-full">Pengaturan</span><span class="lbl-short">Atur</span></button>
+  <a class="nav-kios" href="kios.html" target="_blank" rel="noopener" title="Buka mode kios di tab baru">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v12H3zM8 20h8M12 16v4"/></svg><span>Mode kios</span></a>
+  <button type="button" class="nav-bk" id="nav-bk" hidden title="BackUp manual seluruh data perusahaan ke server">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>BackUp</span></button>
+</nav>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script type="module" src="./admin.js"></script>
+<datalist id="daftar-bank"><option value="BCA"><option value="BRI"><option value="BNI"><option value="Mandiri"><option value="BSI (Bank Syariah Indonesia)"><option value="Bank Riau Kepri Syariah"><option value="CIMB Niaga"><option value="Permata"><option value="Danamon"><option value="BTN"><option value="OCBC"><option value="Maybank"><option value="Bank Jago"><option value="SeaBank"><option value="blu by BCA Digital"><option value="Bank Mega"><option value="Panin"><option value="Bank DKI"><option value="BJB"><option value="Bank Jatim"><option value="Bank Jateng"><option value="Bank Sumut"><option value="Bank Nagari"></datalist>
+</body>
+</html>

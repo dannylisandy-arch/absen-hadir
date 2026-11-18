@@ -1,0 +1,7 @@
+node_modules/
+functions/node_modules/
+functions/functions.yaml
+*.log
+.firebase/
+key.json
+*-key.json

@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.absencsm.app",
+        "sha256_cert_fingerprints": ["B9:AD:2F:FA:44:84:DB:A1:C5:91:E2:39:A4:3C:C0:63:05:97:46:01:DD:3F:B2:DB:44:92:22:0B:48:AA:9A:5E"]
+      }
+    }]

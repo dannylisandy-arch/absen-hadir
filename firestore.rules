@@ -1,0 +1,319 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function authed()     { return request.auth != null; }
+    function me()         { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isSuper()    { return authed() && me().role == 'superadmin'; }
+    // Masa coba / langganan: lewat aktifSampaiTs, admin & karyawan perusahaan itu tidak bisa membaca/menulis datanya (superadmin tetap bisa)
+    function coAktif(cid) { let ts = get(/databases/$(database)/documents/companies/$(cid)).data.get('aktifSampaiTs', null);
+                            return ts == null || request.time < ts; }
+    function anggota(cid) { return authed() && me().get('cid', '') == cid; }
+    function inCo(cid)    { return authed() && me().get('cid', '') == cid && me().get('aktif', true) != false && coAktif(cid); }
+    function boss(cid)    { return isSuper() || (inCo(cid) && me().role in ['admin', 'supervisor']); }
+    function adminOf(cid) { return isSuper() || (inCo(cid) && me().role == 'admin'); }
+    // ubah / hapus absen: superadmin, atau admin yang diberi izin superadmin (users.bolehEditAbsen)
+    function editAbsen(cid) { return isSuper() || (adminOf(cid) && me().get('bolehEditAbsen', false) == true); }
+
+    // Kode perusahaan -> id perusahaan. Boleh dibaca satu per satu (untuk pendaftaran), tidak boleh didaftar.
+    match /kodes/{kode} {
+      allow get:   if true;
+      allow list:  if false;
+      allow write: if isSuper();
+    }
+
+    // Pengguna
+    match /users/{uid} {
+      // Penanda pendaftaran wajah/sidik jari hanya boleh berubah satu arah (belum -> sudah) oleh karyawan.
+      function satuArah(f) {
+        return request.resource.data.get(f, false) == resource.data.get(f, false)
+          || (resource.data.get(f, false) == false && request.resource.data.get(f, false) == true);
+      }
+      allow read: if authed() && (request.auth.uid == uid || isSuper() || boss(resource.data.cid));
+      // Akun baru hanya dibuat oleh admin/supervisor perusahaan itu (atau superadmin).
+      // Supervisor hanya boleh menambah karyawan; admin boleh menambah karyawan, supervisor, atau admin.
+      allow create: if authed()
+        && request.resource.data.kode is string
+        && get(/databases/$(database)/documents/companies/$(request.resource.data.cid)).data.kode == request.resource.data.kode
+        && (adminOf(request.resource.data.cid) && request.resource.data.role in ['karyawan', 'supervisor', 'admin']
+            && (request.resource.data.role != 'admin' || isSuper())
+            || boss(request.resource.data.cid) && request.resource.data.role == 'karyawan')
+        && ((request.resource.data.get('akunDemo', false) == false && request.resource.data.get('passwordDemo', '') == '') || isSuper())
+        && (request.resource.data.get('bolehEditAbsen', false) == false || isSuper())
+        && ((request.resource.data.get('aksesGaji', null) == null && request.resource.data.get('aksesCV', null) == null && request.resource.data.get('aksesMenu', null) == null) || isSuper());
+      allow update: if isSuper()
+        // pengguna mengubah profilnya sendiri tanpa mengubah peran & perusahaan
+        || (authed() && request.auth.uid == uid
+            // karyawan hanya boleh mengubah data HP & pendaftaran wajah/sidik jari miliknya; data lain (shift, nama, jabatan, dll.) hanya admin
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deviceId', 'daftarWajah', 'daftarJari', 'pulihPada', 'pulihDari', 'setujuPrivasi', 'setujuPrivasiPada'])
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.get('cid', '') == resource.data.get('cid', '')
+            && request.resource.data.get('aktif', true) == resource.data.get('aktif', true)
+            // perangkat hanya boleh diisi sekali; menggantinya harus lewat admin (Reset perangkat),
+            // KECUALI pemulihan otomatis (diaktifkan admin): karyawan lolos verifikasi wajah dengan cadangan wajahnya
+            && (((resource.data.get('deviceId', '') == ''
+                  || request.resource.data.get('deviceId', '') == resource.data.get('deviceId', ''))
+                 && satuArah('daftarJari'))
+                || (request.resource.data.get('pulihPada', null) == request.time
+                    && resource.data.get('daftarWajah', false) == true
+                    && request.resource.data.get('daftarJari', false) == false
+                    && exists(/databases/$(database)/documents/companies/$(resource.data.cid)/wajah/$(uid))
+                    && get(/databases/$(database)/documents/companies/$(resource.data.cid)/settings/verifikasi).data.get('pulihOtomatis', false) == true))
+            && satuArah('daftarWajah')
+            // cara hitung kehadiran (absen / manual Excel) hanya diatur admin
+            && request.resource.data.get('kehadiran', '') == resource.data.get('kehadiran', '')
+            // radius tambahan & lokasi kerja hanya diatur admin
+            && request.resource.data.get('radiusTambah', 0) == resource.data.get('radiusTambah', 0)
+            && request.resource.data.get('lokasiKerja', []) == resource.data.get('lokasiKerja', [])
+            && request.resource.data.get('akunDemo', false) == resource.data.get('akunDemo', false)
+            && request.resource.data.get('passwordDemo', '') == resource.data.get('passwordDemo', ''))
+        // admin perusahaan mengatur peran karyawannya (bukan superadmin, tidak memindah perusahaan)
+        || (adminOf(resource.data.get('cid', ''))
+            && request.resource.data.cid == resource.data.cid
+            && request.resource.data.role in ['karyawan', 'supervisor', 'admin']
+            && resource.data.role != 'superadmin'
+            // hak akses admin hanya diatur superadmin: admin tidak bisa mengangkat / menurunkan akun admin
+            && ((request.resource.data.role != 'admin' && resource.data.role != 'admin') || request.resource.data.role == resource.data.role)
+            // akun demo publik: penanda & perannya dikunci untuk selain superadmin
+            && request.resource.data.get('akunDemo', false) == resource.data.get('akunDemo', false)
+            && request.resource.data.get('passwordDemo', '') == resource.data.get('passwordDemo', '')
+            // izin ubah/hapus absen hanya diberikan superadmin
+            && request.resource.data.get('bolehEditAbsen', false) == resource.data.get('bolehEditAbsen', false)
+            // akses menu Gaji & Group CV hanya diatur superadmin
+            && request.resource.data.get('aksesGaji', null) == resource.data.get('aksesGaji', null)
+            && request.resource.data.get('aksesCV', null) == resource.data.get('aksesCV', null)
+            && request.resource.data.get('aksesMenu', null) == resource.data.get('aksesMenu', null)
+            && (resource.data.get('akunDemo', false) == false
+                || (request.resource.data.role == resource.data.role && request.resource.data.get('aktif', true) != false)));
+    }
+
+    // Daftar username yang sudah dipakai (unik di semua perusahaan). Hanya bisa dicek satu per satu.
+    match /usernames/{u} {
+      allow get:    if authed();
+      allow list:   if false;
+      allow create: if boss(request.resource.data.cid) && request.resource.data.uid is string
+        && (isSuper()
+            || get(/databases/$(database)/documents/companies/$(request.resource.data.cid)).data.get('modeDemo', false) == false
+            || u.matches('.*[.]demo$'));
+      allow delete: if isSuper();
+    }
+
+    // Kunci perangkat: satu HP hanya untuk satu akun
+    match /devices/{did} {
+      allow get:    if authed();
+      allow create: if authed() && request.resource.data.uid == request.auth.uid && request.resource.data.cid == me().cid;
+      // pemilik boleh melepas HP lamanya sendiri (dipakai saat pemulihan otomatis)
+      allow delete: if adminOf(resource.data.cid) || (authed() && resource.data.uid == request.auth.uid);
+    }
+
+    // Token notifikasi per HP
+    match /tokens/{token} {
+      allow create, update: if authed()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.role == me().role
+        && (isSuper() || request.resource.data.cid == me().cid);
+      allow delete: if authed() && resource.data.uid == request.auth.uid;
+    }
+
+    // Semua data perusahaan
+    match /companies/{cid} {
+      // anggota tetap boleh membaca data perusahaan sendiri (untuk menampilkan pesan masa aktif habis)
+      allow read:   if isSuper() || anggota(cid);
+      allow create, delete: if isSuper();
+      allow update: if adminOf(cid)
+        // masa aktif (tanggal habis & paket) hanya diatur superadmin
+        && (isSuper() || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['aktifSampai', 'aktifSampaiTs', 'paket']))
+        && (isSuper() || request.resource.data.get('modeDemo', false) == resource.data.get('modeDemo', false))
+        // tampil/sembunyi mode kios hanya diatur superadmin
+        && (isSuper() || request.resource.data.get('kiosAktif', true) == resource.data.get('kiosAktif', true));
+
+      match /settings/{id} {
+        allow read:  if isSuper() || inCo(cid);
+        // aturan gaji (payroll) hanya boleh ditulis aplikasi versi baru, supaya halaman lama tidak menimpa pengaturan
+        allow create, update: if adminOf(cid) && (id != 'payroll'
+          || (request.resource.data.appVer is string && request.resource.data.appVer >= '2026.11.17d'))
+          // daftar peran & akses hanya diatur superadmin
+          && (id != 'peran' || isSuper());
+        allow delete: if adminOf(cid);
+      }
+
+      match /absensi/{id} {
+        allow read: if boss(cid) || (inCo(cid) && resource.data.uid == request.auth.uid);
+        allow create: if inCo(cid)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.nama == me().nama
+          && request.resource.data.type in ['masuk', 'pulang']
+          && me().get('deviceId', '') != ''
+          && request.resource.data.device == me().get('deviceId', '')
+          && request.resource.data.status in ['otomatis', 'menunggu']
+          && request.resource.data.ts == request.time
+          // penanda yang hanya boleh diisi admin / server tidak boleh dikirim dari HP karyawan
+          && !request.resource.data.keys().hasAny(['by', 'byUid', 'manual', 'import', 'kios', 'dariIzin', 'dariPengingat', 'tutupOtomatis',
+               'diedit', 'dieditOleh', 'dieditUid', 'dieditPada', 'tsAsli', 'typeAsli', 'dicekServer', 'curiga', 'decidedAt', 'demo', 'lampiran'])
+        // Mode kios: admin/supervisor yang membuka kios mencatat absen karyawan perusahaannya (jam server)
+        || (boss(cid)
+          && request.resource.data.kios == true
+          && get(/databases/$(database)/documents/companies/$(cid)).data.get('kiosAktif', true) != false
+          && request.resource.data.type in ['masuk', 'pulang']
+          && request.resource.data.status in ['otomatis', 'menunggu']
+          && request.resource.data.ts == request.time
+          && request.resource.data.byUid == request.auth.uid
+          && get(/databases/$(database)/documents/users/$(request.resource.data.uid)).data.cid == cid)
+        // Absen manual oleh admin/superadmin (misalnya HP karyawan rusak, kondisi khusus) & impor Excel:
+        // langsung sah, tanggal & jam bebas (tanpa batas)
+        || (adminOf(cid)
+          && request.resource.data.manual == true
+          && request.resource.data.type in ['masuk', 'pulang']
+          && request.resource.data.status == 'terima'
+          && request.resource.data.ts is timestamp
+          && request.resource.data.byUid == request.auth.uid
+          && get(/databases/$(database)/documents/users/$(request.resource.data.uid)).data.cid == cid)
+        // Pengajuan "lupa absen" yang disetujui admin/supervisor: absen dicatat sesuai tanggal & jam pengajuan
+        || (boss(cid)
+          && request.resource.data.manual == true
+          && request.resource.data.dariIzin is string
+          && request.resource.data.type in ['masuk', 'pulang']
+          && request.resource.data.status == 'terima'
+          && request.resource.data.ts is timestamp
+          && request.resource.data.ts <= request.time
+          && request.resource.data.byUid == request.auth.uid
+          && get(/databases/$(database)/documents/companies/$(cid)/izin/$(request.resource.data.dariIzin)).data.uid == request.resource.data.uid
+          && get(/databases/$(database)/documents/companies/$(cid)/izin/$(request.resource.data.dariIzin)).data.status == 'menunggu'
+          && ((request.resource.data.type == 'masuk'
+                && get(/databases/$(database)/documents/companies/$(cid)/izin/$(request.resource.data.dariIzin)).data.jenis == 'lupaMasuk')
+              || (request.resource.data.type == 'pulang'
+                && get(/databases/$(database)/documents/companies/$(cid)/izin/$(request.resource.data.dariIzin)).data.jenis == 'lupaPulang')));
+        allow update: if boss(cid)
+          && resource.data.status == 'menunggu'
+          && request.resource.data.status in ['terima', 'tolak']
+          && request.resource.data.byUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'by', 'byUid', 'note', 'decidedAt'])
+        // Ubah jam/jenis absen: superadmin atau admin yang diizinkan superadmin. Karyawan & status tidak boleh diganti, waktu tidak boleh di masa depan.
+        || (editAbsen(cid)
+          && request.resource.data.type in ['masuk', 'pulang']
+          && request.resource.data.ts is timestamp
+          && request.resource.data.ts <= request.time
+          && request.resource.data.dieditUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ts', 'type', 'diedit', 'dieditOleh', 'dieditUid', 'dieditPada', 'alasanEdit', 'tsAsli', 'typeAsli']));
+        // Hapus absen: superadmin atau admin yang diizinkan superadmin
+        allow delete: if editAbsen(cid);
+      }
+
+      // Jawaban pengingat absen pulang ("Masih lembur" / "Lupa"): ditulis server, dibaca karyawan ybs. & admin/kios
+      match /pengingat/{id} {
+        allow read: if boss(cid) || (inCo(cid) && resource.data.uid == request.auth.uid);
+        allow write: if false;
+      }
+
+      match /izin/{id} {
+        allow read: if boss(cid) || (inCo(cid) && resource.data.uid == request.auth.uid);
+        allow create: if inCo(cid)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.nama == me().nama
+          // "tidak bisa absen masuk" (lupaMasuk) perlu persetujuan admin; lupa pulang lewat pengingat, bukan pengajuan
+          && request.resource.data.jenis in ['izin', 'sakit', 'cuti', 'lupaMasuk']
+          // lupa absen: satu tanggal + jam (HH:MM)
+          && (!(request.resource.data.jenis in ['lupaMasuk', 'lupaPulang'])
+              || (request.resource.data.mulai == request.resource.data.selesai
+                  && request.resource.data.jam is string && request.resource.data.jam.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')))
+          && request.resource.data.mulai is string && request.resource.data.selesai is string
+          && request.resource.data.mulai <= request.resource.data.selesai
+          && request.resource.data.status == 'menunggu'
+          && request.resource.data.ts == request.time
+          && (!('lampiran' in request.resource.data)
+              || (request.resource.data.lampiran is list && request.resource.data.lampiran.size() <= 3))
+          // "tidak bisa absen masuk" wajib melampirkan foto
+          && (request.resource.data.jenis != 'lupaMasuk'
+              || (request.resource.data.lampiran is list && request.resource.data.lampiran.size() >= 1));
+        allow update: if boss(cid)
+          && resource.data.status == 'menunggu'
+          && request.resource.data.status in ['terima', 'tolak']
+          && request.resource.data.byUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'by', 'byUid', 'note', 'decidedAt']);
+        allow delete: if inCo(cid) && resource.data.uid == request.auth.uid && resource.data.status == 'menunggu';
+      }
+
+      match /payroll/{uid} {
+        allow read:  if adminOf(cid) || (inCo(cid) && request.auth.uid == uid);
+        // hanya aplikasi versi baru (yang aman, tidak menimpa data) yang boleh menulis; halaman versi lama ditolak
+        allow create, update: if adminOf(cid) && request.resource.data.appVer is string && request.resource.data.appVer >= '2026.11.17d';
+        allow delete: if adminOf(cid);
+        // Riwayat data gaji: salinan sebelum setiap perubahan (untuk dikembalikan); tidak bisa diubah, hanya superadmin yang boleh menghapus
+        match /riwayat/{rid} {
+          allow read, create: if adminOf(cid);
+          allow update: if false;
+          allow delete: if isSuper();
+        }
+      }
+
+      // Log aktivitas: dibaca admin; aplikasi hanya boleh menambah catatan miliknya sendiri, tidak bisa mengubah/menghapus
+      match /log/{id} {
+        allow read: if adminOf(cid);
+        allow create: if (inCo(cid) || isSuper())
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.ts == request.time
+          && request.resource.data.sumber == 'aplikasi';
+      }
+
+      // Keputusan cek lembur: { uid, nama, tanggal, status: lembur|lupa, jam? }
+      match /lembur/{id} {
+        allow read: if boss(cid) || (inCo(cid) && resource.data.uid == request.auth.uid);
+        // keputusan lembur / lupa absen pulang / koreksi Lebih HK (lhkJam) per karyawan per tanggal.
+        // keputusan bertanda superadmin (lembur di bawah batas) hanya bisa dibuat/diubah/dihapus superadmin
+        allow write: if boss(cid)
+          && (resource == null || resource.data.get('superadmin', false) != true || isSuper())
+          && (request.method == 'delete' || (request.resource.data.status in ['lembur', 'lupa', 'koreksi'] && request.resource.data.uid is string
+              && (!('lhkJam' in request.resource.data) || request.resource.data.lhkJam is number)
+              && (request.resource.data.get('superadmin', false) != true || isSuper())));
+      }
+
+      // Kehadiran manual per periode (upload Excel, mis. operator & supir): { data: { uid: { hari, lembur, uangLembur?, ket } } }
+      match /kehadiranManual/{ym} {
+        allow read: if adminOf(cid);
+        allow create, update: if adminOf(cid) && request.resource.data.appVer is string && request.resource.data.appVer >= '2026.11.17d';
+        allow delete: if adminOf(cid);
+        match /riwayat/{rid} {
+          allow read, create: if adminOf(cid);
+          allow update: if false;
+          allow delete: if isSuper();
+        }
+      }
+
+      // Pinjaman karyawan: dikelola admin, karyawan hanya bisa melihat pinjamannya sendiri
+      match /pinjaman/{id} {
+        allow read:  if adminOf(cid) || (inCo(cid) && resource.data.uid == request.auth.uid);
+        allow delete: if adminOf(cid);
+        allow create, update: if adminOf(cid)
+          && request.resource.data.uid is string
+          && request.resource.data.jumlah is number && request.resource.data.jumlah > 0
+          && request.resource.data.tenor is int && request.resource.data.tenor >= 1 && request.resource.data.tenor <= 120
+          && request.resource.data.mulai is string;
+      }
+
+      // Hasil "Cek kesiapan HP": karyawan hanya bisa mengirim miliknya sendiri, hanya admin yang bisa membaca/menghapus
+      match /cekHP/{id} {
+        allow read, delete: if adminOf(cid);
+        allow create: if inCo(cid)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.ts == request.time
+          && request.resource.data.item is list && request.resource.data.item.size() <= 20;
+      }
+
+      // Cadangan ciri wajah (angka, bukan foto) untuk memulihkan HP yang datanya terhapus
+      match /wajah/{uid} {
+        allow read: if adminOf(cid) || (inCo(cid) && request.auth.uid == uid);
+        allow create: if inCo(cid) && request.auth.uid == uid && request.resource.data.desc is map;
+        allow update, delete: if adminOf(cid);
+      }
+
+      // Kertas kerja Pajak & BPJS per bulan (menu Pajak & BPJS): hanya admin
+      match /pajak/{ym} {
+        allow read, write: if adminOf(cid);
+      }
+
+      match /slips/{id} {
+        allow read:  if adminOf(cid) || (inCo(cid) && resource.data.uid == request.auth.uid);
+        allow write: if adminOf(cid);
+      }
+    }
+  }
+}
