@@ -23,6 +23,11 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: npx --yes firebase-tools@13 deploy --only firestore,storage,functions --project absencsm --force --non-interactive
+      - name: Bersihkan sisa build functions (hapus otomatis image lama > 1 hari)
+        continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+        run: npx --yes firebase-tools@14 functions:artifacts:setpolicy --location asia-southeast2 --days 1 --force --project absencsm --non-interactive
       - name: Hapus kunci
         if: always()
         run: rm -f "$RUNNER_TEMP/sa.json"
