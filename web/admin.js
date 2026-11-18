@@ -1551,7 +1551,7 @@ const FIELD = [["nik", "Nomor induk"], ["jabatan", "Jabatan"], ["divisi", "Divis
 // Kosongkan form tambah karyawan & siapkan pilihan shift/gaji
 function siapkanFormTambah(){
   ["u-nama","u-user","u-pass","u-nik","u-jabatan","u-divisi","u-hp","u-masuk","u-alamat","u-gp","u-um","u-tj","u-tt","u-tl","u-bank","u-rek","u-an","u-kehadiran","u-cv","u-proy"].forEach(id => $("#" + id).value = "");
-  $("#u-mode").value = ""; ["u-kes","u-jht","u-jp","u-pph"].forEach(id => $("#" + id).checked = true);
+  $("#u-mode").value = MODE_BAWAAN(); ["u-kes","u-jht","u-jp","u-pph"].forEach(id => $("#" + id).checked = true);
   $("#u-cek").textContent = ""; $("#u-saran-wrap").hidden = true; $("#u-mirip").hidden = true; msg($("#u-msg"), "");
   const sh = aturan.shifts || [];
   $("#u-shift").innerHTML = `<option value="">Jam kerja utama (${esc(aturan.jamMasuk || "08:00")}–${esc(aturan.jamPulang || "17:00")})</option>` +
@@ -2627,7 +2627,21 @@ const KOLOM = [["gajiPokok", null], ["uangMakan", "U Makan"], ["tjJabatan", "Tun
   ["uLebihHK", "U Lebih HK", "lhk"]];                                                // "lhk" = hanya kalau Lebih HK dibayar (Aturan)
 const PER_HARI = m => m === "harian" || m === "operator";
 const nilai = v => v ? fmtNum(v) : "";
-const MODE_NAMA = { prorata: "Berdasarkan hari kerja", harian: "Upah harian", operator: "Operator (harian + jam siang + lembur)", bulanan: "Bulanan tetap" };
+const MODE_NAMA = { harian: "Upah harian", prorata: "Bulanan prorata (berdasarkan hari kerja)", bulanan: "Bulanan tetap", operator: "Operator (harian + jam siang + lembur)" };
+const MODE_BAWAAN = () => aturan.modeGaji || "harian";      // karyawan tanpa pilihan (dulu "Ikut aturan") = harian
+// Sekali jalan: karyawan yang dulu "Ikut aturan" dipindah ke cara hitung yang berlaku (Harian) secara permanen
+let migrasiModeJalan = false;
+async function migrasiModeIkutAturan(){
+  if (migrasiModeJalan || !CID || !bolehGaji("karyawan")) return; migrasiModeJalan = true;
+  const target = MODE_BAWAAN(), list = karyawan.filter(u => u.kehadiran !== "tidak" && !(gajiMap[u.uid] || {}).modeGaji);
+  if (!list.length) return;
+  try{
+    for (let i = 0; i < list.length; i += 400){ const bt = writeBatch(db);
+      list.slice(i, i + 400).forEach(u => bt.set(D("payroll", u.uid), { modeGaji: target, appVer: VERSI_APP }, { merge: true })); await bt.commit(); }
+    list.forEach(u => { gajiMap[u.uid] = { ...(gajiMap[u.uid] || {}), modeGaji: target }; gAwal[u.uid] = { ...(gAwal[u.uid] || {}), modeGaji: target }; });
+    catatLog(CID, me.uid, profile, "gaji", `Cara hitung gaji pokok ${list.length} karyawan "Ikut aturan" dipindah ke ${MODE_NAMA[target] || target}`);
+  }catch(e){ migrasiModeJalan = false; console.warn("migrasi mode gaji", e); }
+}
 // Daftar komponen (tambahan/potongan) yang bisa diedit
 function komponenHTML(list, kelas){
   return `<div class="komp-list ${kelas}">${(list || []).map(k => `<div class="komp-row">
@@ -2650,6 +2664,7 @@ function pasangKomponen(card){
   });
 }
 function renderUsers(){
+  setTimeout(migrasiModeIkutAturan, 0);
   gUsersDirty = false; gAwal = JSON.parse(JSON.stringify(gajiMap)); gPer = $("#k-periode").value;
   const harian = aturan.modeGaji === "harian", per = $("#k-periode").value;
   $("#karyawan-info").textContent = aturan.modeGaji === "operator" ? "Operator: upah per hari, U Siang & U Lembur per jam. Hari kerja, jam siang & lembur dari upload Excel." : harian ? "Upah per hari, tunjangan per bulan." : "Gaji pokok dan tunjangan per bulan.";
@@ -2687,9 +2702,8 @@ function renderUsers(){
       ${pinjamanKetikHTML(u.uid, per)}
       <details class="k-atur"><summary><span class="k-atur-ringkas">⚙️ Pengaturan</span></summary>
       <label class="check k-tetap-wrap" title="Gaji dibayar penuh setiap bulan: tanpa potongan absen/telat & transport harian, tidak perlu upload kehadiran. Uang makan diinput manual: total Rp per bulan (kotak Uang makan bulan)."><input type="checkbox" class="k-tetap" ${g.gajiTetap ? "checked" : ""}> <span><b>Gaji tetap penuh</b> <span class="meta">(tidak dari absen)</span></span></label>
-      <label class="k-mode-lbl">Cara hitung gaji</label>
-      <select class="k-mode"><option value="">Ikut aturan (${({ prorata: "hari kerja", harian: "harian", operator: "operator", bulanan: "bulanan" })[aturan.modeGaji] || "perusahaan"})</option>
-        ${Object.entries(MODE_NAMA).map(([v, l]) => `<option value="${v}" ${g.modeGaji === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <label class="k-mode-lbl">Cara hitung gaji pokok</label>
+      <select class="k-mode">${Object.entries(MODE_NAMA).map(([v, l]) => `<option value="${v}" ${(g.modeGaji || MODE_BAWAAN()) === v ? "selected" : ""}>${l}</option>`).join("")}</select>
       <div class="pola-pilih"><label>Hari kerja</label>
       <select class="k-pola"><option value="">Ikut aturan (${aturan.hariKerja?.length === 6 ? "Senin–Sabtu" : aturan.hariKerja?.length === 7 ? "setiap hari" : "Senin–Jumat"})</option>
         <option value="5" ${g.polaKerja === "5" ? "selected" : ""}>Senin–Jumat</option>

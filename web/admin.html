@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="utf-8">
-<meta name="versi-app" content="2026.11.18h">
+<meta name="versi-app" content="2026.11.18i">
 <script>
 /* Perbaikan otomatis: kalau sebagian file aplikasi masih versi lama dari cache (sinyal putus saat update)
    aplikasi bisa error saat dimuat. Hapus cache lalu muat ulang SEKALI. */
@@ -207,9 +207,9 @@
           <div><label for="u-tj">Tunj. jabatan</label><input id="u-tj" inputmode="numeric" data-num="int"></div>
           <div><label for="u-tt">Tunj. transport</label><input id="u-tt" inputmode="numeric" data-num="int"></div>
           <div><label for="u-tl">Tunj. lainnya</label><input id="u-tl" inputmode="numeric" data-num="int"></div>
-          <div><label for="u-mode">Cara hitung gaji</label><select id="u-mode">
-            <option value="">Ikut aturan perusahaan</option><option value="prorata">Berdasarkan hari kerja</option>
-            <option value="harian">Upah harian</option><option value="operator">Operator (harian + jam siang + lembur)</option><option value="bulanan">Bulanan tetap</option></select></div>
+          <div><label for="u-mode">Cara hitung gaji pokok</label><select id="u-mode">
+            <option value="harian">Upah harian</option><option value="prorata">Bulanan prorata (berdasarkan hari kerja)</option>
+            <option value="bulanan">Bulanan tetap</option><option value="operator">Operator (harian + jam siang + lembur)</option></select></div>
         </div>
         <div class="grid2">
           <div><label for="u-bank">Bank</label><input id="u-bank" list="daftar-bank" placeholder="mis. BCA" autocomplete="off"></div>
@@ -327,9 +327,9 @@
         <div class="fg-simpan"><button class="small" id="g-users-save">Simpan gaji</button></div>
         <div><label for="k-lok">Lokasi kerja</label><select id="k-lok"><option value="">Semua lokasi</option></select></div>
         <div id="k-cvg-wrap" hidden><label for="k-cvg">Group CV</label><select id="k-cvg"><option value="">Semua Group CV</option></select></div>
-        <div><label for="k-mode-filter">Cara hitung gaji</label><select id="k-mode-filter">
-          <option value="">Semua cara hitung</option><option value="prorata">Berdasarkan hari kerja</option>
-          <option value="harian">Upah harian</option><option value="operator">Operator (harian + jam siang + lembur)</option><option value="bulanan">Bulanan tetap</option></select></div>
+        <div><label for="k-mode-filter">Cara hitung gaji pokok</label><select id="k-mode-filter">
+          <option value="">Semua cara hitung</option><option value="harian">Upah harian</option><option value="prorata">Bulanan prorata (berdasarkan hari kerja)</option>
+          <option value="bulanan">Bulanan tetap</option><option value="operator">Operator (harian + jam siang + lembur)</option></select></div>
         <p class="meta">Bonus hanya berlaku untuk periode ini. Kolom lain berlaku setiap bulan.</p>
       </div>
       <div class="manual-bar" hidden><button type="button" class="small alt" id="k-import">📥 Import data gaji (Excel)</button></div>
