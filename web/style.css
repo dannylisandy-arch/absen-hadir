@@ -1625,3 +1625,21 @@ nav .versi-baris .nav-keluar svg{width:16px;height:16px}
 #g-users .emp-card .k-atur > select{width:calc(100% - 20px)!important}
 #g-users .emp-card .k-atur > div{box-sizing:border-box;width:auto}
 #g-users .emp-card .k-atur > div select{width:100%!important;margin:0}
+/* Pinjaman: 2 bagian (daftar nama + sisa | rincian) */
+.pj-2kolom{display:grid;grid-template-columns:minmax(260px,360px) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:899px){ .pj-2kolom{grid-template-columns:1fr} }
+.pj-daftar{padding:6px!important;position:sticky;top:10px;max-height:calc(100vh - 40px);overflow:auto}
+.pj-dk-judul,.pj-dk-total{display:flex;justify-content:space-between;padding:8px 10px;font-size:.74rem;color:var(--muted);font-weight:700}
+.pj-dk-total{border-top:1px solid var(--line);margin-top:4px;font-size:.85rem;color:var(--ink)}
+.pj-orang{display:flex!important;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px!important;margin:0!important;min-height:0!important;
+  background:none!important;box-shadow:none!important;border:0!important;border-radius:10px!important;color:var(--ink)!important;font-weight:500!important;text-align:left;font-size:.9rem!important}
+.pj-orang:hover{background:var(--soft)!important}
+.pj-orang.aktif{background:color-mix(in srgb,var(--brand) 14%,transparent)!important;font-weight:700!important}
+.pj-orang b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pj-orang.lunas{opacity:.6}
+.pj-orang small{color:var(--muted);font-weight:500}
+.pj-rinci-judul{margin:2px 0 10px;font-size:1.05rem}
+.pj-rinci .pj-kartu{margin-bottom:12px}
+.pj-jadwal-inline{margin:10px 0 4px;max-height:280px;overflow:auto}
+.pj-rinci .pj-aksi{display:flex;flex-wrap:wrap;gap:8px}
+.pj-rinci .pj-aksi button{flex:0 0 auto;width:auto;min-width:120px}

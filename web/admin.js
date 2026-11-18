@@ -4106,7 +4106,13 @@ function tampilPinjaman(){
     (!fj || jenisPinjaman(x.p) === fj) && (!q || [x.p.nama, x.p.ket, NAMA_JENIS_PJ[jenisPinjaman(x.p)]].some(v => String(v || "").toLowerCase().includes(q))))
     .sort((a, b) => (a.st.lunas - b.st.lunas) || (a.p.nama || "").localeCompare(b.p.nama || ""));
   if (!list.length){ $("#pj-list").innerHTML = `<p class="meta">${pinjamanData.length ? "Tidak ada pinjaman yang cocok." : "Belum ada pinjaman. Tekan ＋ Tambah pinjaman."}</p>`; return; }
-  $("#pj-list").replaceChildren(...list.map(({ p, st }) => {
+  // 2 bagian: kiri = daftar nama + sisa pinjaman, kanan = rincian pinjaman nama yang diklik
+  const kelompok = new Map();
+  list.forEach(x => { const k = x.p.uid || ("nama:" + (x.p.nama || "")); if (!kelompok.has(k)) kelompok.set(k, []); kelompok.get(k).push(x); });
+  const orang = [...kelompok.entries()].map(([k, xs]) => ({ k, nama: xs[0].p.nama || "", xs, sisa: xs.reduce((t, x) => t + x.st.sisa, 0), lunas: xs.every(x => x.st.lunas) }))
+    .sort((a, b) => (a.lunas - b.lunas) || a.nama.localeCompare(b.nama));
+  if (!orang.some(o => o.k === pjPilih)) pjPilih = orang[0]?.k || "";
+  const kartu = ({ p, st }) => {
     const c = document.createElement("div"); c.className = "card pj-kartu" + (st.lunas ? " lunas" : "");
     const pct = Math.round(st.terbayar / (+p.jumlah || 1) * 100), ini = angsuranPeriode([p], ym)[0];
     c.innerHTML = `<div class="pj-atas"><div><b>${esc(p.nama)}</b><div class="meta"><span class="pj-jenis ${jenisPinjaman(p)}">${NAMA_JENIS_PJ[jenisPinjaman(p)]}</span>${p.ket ? " · " + esc(p.ket) : ""}</div></div>
@@ -4128,9 +4134,29 @@ function tampilPinjaman(){
       try{ await deleteDoc(D("pinjaman", p.id)); catatLog(CID, me.uid, profile, "gaji", "Menghapus pinjaman " + p.nama + " " + rp(p.jumlah)); toast("Pinjaman dihapus."); muatPinjaman(); }
       catch(err){ toast("Gagal: " + (err.code || err.message)); }
     };
+    // rincian: jadwal angsuran langsung tampil (tanpa popup)
+    const manualPJ = st.manual, jd = manualPJ ? statusPinjaman(p, "9999-12").jadwal : jadwalPinjaman(p);
+    const tb = document.createElement("div"); tb.className = "tablewrap pj-jadwal-inline";
+    tb.innerHTML = jd.length ? `<table class="pj-tbl"><tr><th>Ke</th><th>Periode gaji</th><th>${manualPJ ? "Dipotong" : "Angsuran"}</th><th>Sisa</th><th></th></tr>${jd.map(a =>
+      `<tr${a.ym === ym ? ' class="ini"' : ""}><td>${a.pelunasan ? "Lunas" : a.ke}</td><td>${esc(ymLabel(a.ym))}</td><td>${rp(a.jumlah)}</td><td>${rp(a.sisa)}</td><td>${a.ym < ym ? "✓" : a.ym === ym ? "periode ini" : ""}</td></tr>`).join("")}</table>` : '<p class="meta">Belum ada potongan.</p>';
+    c.querySelector(".pj-aksi").before(tb); c.querySelector(".pj-jadwal")?.remove();
     return c;
-  }));
+  };
+  const kiri = document.createElement("div"); kiri.className = "pj-daftar card";
+  kiri.innerHTML = `<div class="pj-dk-judul"><span>Karyawan</span><span>Sisa pinjaman</span></div>` + orang.map(o =>
+    `<button type="button" class="pj-orang${o.k === pjPilih ? " aktif" : ""}${o.lunas ? " lunas" : ""}" data-k="${esc(o.k)}"><span class="pj-nm">${esc(o.nama)}${o.xs.length > 1 ? ` <small>(${o.xs.length} pinjaman)</small>` : ""}</span><b>${o.lunas ? "Lunas" : rp(o.sisa)}</b></button>`).join("")
+    + `<div class="pj-dk-total"><span>Total sisa</span><b>${rp(orang.reduce((t, o) => t + o.sisa, 0))}</b></div>`;
+  const kanan = document.createElement("div"); kanan.className = "pj-rinci";
+  const tampilRinci = () => { const o = orang.find(x => x.k === pjPilih); kanan.replaceChildren(...(o ? [Object.assign(document.createElement("h3"), { className: "pj-rinci-judul", textContent: o.nama + " · sisa " + (o.lunas ? "lunas" : rp(o.sisa)) }), ...o.xs.map(kartu)] : [])); };
+  kiri.querySelectorAll(".pj-orang").forEach(btn => btn.onclick = () => {
+    pjPilih = btn.dataset.k; kiri.querySelectorAll(".pj-orang").forEach(x => x.classList.toggle("aktif", x === btn)); tampilRinci();
+    if (matchMedia("(max-width: 899px)").matches) kanan.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  tampilRinci();
+  const wrap = document.createElement("div"); wrap.className = "pj-2kolom"; wrap.append(kiri, kanan);
+  $("#pj-list").replaceChildren(wrap);
 }
+let pjPilih = "";
 function jadwalPopup(p, tombol){
   const manualPJ = p.potong === "manual" || p.potong === "ketik";
   const ym = ymSekarang(), jd = manualPJ ? statusPinjaman(p, "9999-12").jadwal : jadwalPinjaman(p);
