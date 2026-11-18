@@ -1619,3 +1619,9 @@ nav .versi-baris .nav-keluar svg{width:16px;height:16px}
 .bk-proses.ok .bk-waktu,.bk-proses.gagal .bk-waktu{display:none}
 .bk-tutup{margin-top:14px;min-width:120px}
 @keyframes bkputar{to{transform:rotate(360deg)}}
+/* Gaji › Karyawan: dropdown di ⚙️ pengaturan kartu tidak boleh keluar dari kartu */
+#g-users .emp-card{min-width:0}
+#g-users .emp-card .k-atur select{display:block;box-sizing:border-box!important;max-width:none;min-width:0!important;height:36px;text-overflow:ellipsis}
+#g-users .emp-card .k-atur > select{width:calc(100% - 20px)!important}
+#g-users .emp-card .k-atur > div{box-sizing:border-box;width:auto}
+#g-users .emp-card .k-atur > div select{width:100%!important;margin:0}
