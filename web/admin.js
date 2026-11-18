@@ -1397,6 +1397,11 @@ function isiPilihCV(){
   const f = $("#k-cv-f"); if (f){ const v = f.value;
     f.innerHTML = '<option value="">Semua Group CV</option><option value="-">Tanpa Group CV</option>' + daftarCV.map(c => `<option value="${esc(c.id)}">${esc(c.nama)}</option>`).join("");
     f.value = [...f.options].some(o => o.value === v) ? v : ""; f.hidden = !daftarCV.length; }
+  // filter Group CV di Gaji › Karyawan (hanya CV yang boleh dilihat admin ini)
+  const g = $("#k-cvg"); if (g){ const v = g.value;
+    const ops = [...daftarCV.map(c => [c.id, c.nama]), ["-", "Tanpa Group CV"]].filter(([id]) => cvBoleh({ grupCV: id === "-" ? "" : id }));
+    g.innerHTML = '<option value="">Semua Group CV</option>' + ops.map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join("");
+    g.value = [...g.options].some(o => o.value === v) ? v : ""; $("#k-cvg-wrap").hidden = !daftarCV.length; }
 }
 // Memilih "＋ Tambah Group CV baru…" di dropdown mana pun: minta nama, simpan, lalu langsung terpilih
 document.addEventListener("change", async e => {
@@ -2654,8 +2659,9 @@ function renderUsers(){
   const fSel = $("#k-peran"); isiFilterPeran(fSel); isiFilterLokasi($("#k-lok")); $("#k-lok").parentElement.hidden = $("#k-lok").hidden;
   const fLok = $("#k-lok").value;
   // Filter cara hitung: memakai cara hitung yang berlaku (khusus karyawan, atau aturan perusahaan)
-  const fMode = $("#k-mode-filter").value;
+  const fMode = $("#k-mode-filter").value, fCV = $("#k-cvg")?.value || "";
   const daftar = karyawan.filter(u => u.kehadiran !== "tidak" && cocokPeran(u, fSel.value) && cocokLokasi(u, fLok)
+    && cvBoleh(u) && (!fCV || (u.grupCV || "-") === fCV)
     && (!fMode || ((gajiMap[u.uid] || {}).modeGaji || aturan.modeGaji || "bulanan") === fMode));
   if (!daftar.length){ box.innerHTML = '<p class="meta">Tidak ada karyawan yang cocok dengan filter ini.</p>'; return; }
   box.innerHTML = daftar.map(u => {
@@ -2764,6 +2770,7 @@ $("#k-periode").onchange = async () => { if (document.querySelector('#g-users .e
 $("#k-peran").onchange = renderUsers;
 $("#k-mode-filter").onchange = renderUsers;
 $("#k-lok").onchange = renderUsers;
+$("#k-cvg").onchange = renderUsers;
 /* ---------- Import data gaji karyawan dari Excel (Gaji > Karyawan) ---------- */
 const KIMP = [   // [field payroll, judul kolom template, regex pengenal judul, regex pengecualian]
   ["modeGaji", "Cara gaji", /cara ?gaji|jenis ?gaji|mode ?gaji/],
