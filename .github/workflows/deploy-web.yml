@@ -15,5 +15,5 @@ jobs:
       - name: Upload ke Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: a2e6789dc6a432b56e70444192981cb4
         run: npx --yes wrangler@3 pages deploy web --project-name=absencsm --branch=main --commit-dirty=true

@@ -1,4 +1,4 @@
-# Deploy otomatis aturan (Firestore + Storage) dan Functions ke Firebase absencsm setiap ada perubahan
+# Deploy otomatis aturan (Firestore + Storage) dan Functions ke Firebase absencsm setiap ada perubahan 
 name: Deploy Firebase
 on:
   push:

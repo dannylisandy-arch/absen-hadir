@@ -10,5 +10,5 @@ Cara manual (.bat / Cloud Shell) tetap bisa dipakai sebagai cadangan: lihat PAND
 
 Secrets yang dibutuhkan (Settings › Secrets and variables › Actions):
 - `CLOUDFLARE_API_TOKEN` : token Cloudflare dengan izin *Cloudflare Pages: Edit*
-- `CLOUDFLARE_ACCOUNT_ID` : Account ID Cloudflare
+- (Account ID Cloudflare sudah tertulis di .github/workflows/deploy-web.yml)
 - `FIREBASE_SERVICE_ACCOUNT` : isi file JSON kunci service account project absencsm
