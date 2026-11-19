@@ -3328,6 +3328,7 @@ function renderHasil(){
     (tanpaGaji ? `<p class="meta" style="color:var(--bad)">${fmtNum(tanpaGaji)} karyawan belum diisi ${aturan.modeGaji === "harian" ? "upah hariannya" : "gaji pokoknya"}.</p>` : "");
   $("#g-tabel-btn").textContent = "📊 " + (tabelRinciBuka ? "Sembunyikan" : "Tampilkan") + " tabel rincian";
   $("#g-tabel-btn").onclick = () => { tabelRinciBuka = !tabelRinciBuka; renderHasil(); };
+  $("#g-xlsx-btn").onclick = eksporRinciXlsx;
   renderTabelRinci();
   $("#g-list").replaceChildren(...hasilT().map(({ u, r }) => {
     const c = document.createElement("div"); c.className = "card hg-kartu";
@@ -3388,15 +3389,22 @@ function renderTabelRinci(){
     <tbody>${hasilT().map(({ u, r }, i) => `<tr><td>${i + 1}</td><td>${esc(u.nama)}<small>${esc(u.jabatan || labelPeran(u) || "")}</small></td>${kol.map(([, f, t]) =>
       `<td class="num${t === "tebal" ? " tebal" : ""}${t === "pot" ? " pot" : ""}">${sel(+f(r) || 0, t)}</td>`).join("")}</tr>`).join("")}</tbody>
     <tfoot><tr><td></td><td>Total</td>${kol.map(([, , t], i) => `<td class="num tebal${t === "pot" ? " pot" : ""}">${t === "hari" ? "" : sel(tot[i], t)}</td>`).join("")}</tr></tfoot></table></div>`;
-  box.querySelector("#g-tabel-xlsx").onclick = () => {
-    const head = ["No", "Nama", "Jabatan", ...kol.map(([n, , t]) => t === "pot" ? n + " (potong)" : n)];
-    const rows = hasilT().map(({ u, r }, i) => [i + 1, u.nama || "", u.jabatan || labelPeran(u) || "", ...kol.map(([, f]) => +f(r) || 0)]);
-    rows.push(["", "TOTAL", "", ...kol.map(([, , t], i) => t === "hari" ? "" : tot[i])]);
-    const blob = buatXlsx([head, ...rows], "Rincian " + curYM, [5, 26, 16, ...kol.map(() => 13)]);
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "rincian-gaji-" + curYM + ".xlsx"; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
-    catatLog(CID, me.uid, profile, "ekspor", "Unduh tabel rincian gaji " + periode);
-  };
+  box.querySelector("#g-tabel-xlsx").onclick = eksporRinciXlsx;
+}
+// Export ke Excel: semua gaji hasil hitung (sesuai filter) beserta rinciannya
+function eksporRinciXlsx(){
+  if (!hasilT().length){ toast("Belum ada hasil hitung. Klik Hitung dulu."); return; }
+  const kol = dataTabelRinci(), tot = kol.map(([, f]) => hasilT().reduce((a, { r }) => a + (+f(r) || 0), 0));
+  const namaCV = id => daftarCV.find(c => c.id === id)?.nama || "";
+  const head = ["No", "Nama", "Jabatan", "Peran", "Group CV", "Cara hitung", ...kol.map(([n, , t]) => t === "pot" ? n + " (potong)" : n), "Bank", "No. rekening", "Atas nama"];
+  const rows = hasilT().map(({ u, r }, i) => { const g = gajiMap[u.uid] || {};
+    return [i + 1, u.nama || "", u.jabatan || "", labelPeran(u) || "", namaCV(u.grupCV), r.gajiTetap ? "Gaji tetap penuh" : (MODE_NAMA[r.mode || g.modeGaji || MODE_BAWAAN()] || ""),
+      ...kol.map(([, f]) => +f(r) || 0), g.bank || "", g.noRek ? String(g.noRek) : "", g.atasNama || (g.noRek ? u.nama : "")]; });
+  rows.push(["", "TOTAL", "", "", "", "", ...kol.map(([, , t], i) => t === "hari" || t === "jam" ? "" : tot[i]), "", "", ""]);
+  const blob = buatXlsx([head, ...rows], "Gaji " + curYM, [5, 26, 16, 12, 22, 18, ...kol.map(() => 13), 10, 18, 22]);
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "gaji-" + curYM + ".xlsx"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  catatLog(CID, me.uid, profile, "ekspor", "Export Excel gaji " + periode + " (" + hasilT().length + " karyawan)");
 }
 const slipDoc = (u, r) => ({ uid: u.uid, nama: u.nama, periode: curYM, label: periode, bersih: r.bersih,
   hasil: bersihkan(r), oleh: profile.nama, dibuat: serverTimestamp() });
