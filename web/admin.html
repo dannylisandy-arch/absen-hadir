@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="utf-8">
-<meta name="versi-app" content="2026.11.19a">
+<meta name="versi-app" content="2026.11.19b">
 <script>
 /* Perbaikan otomatis: kalau sebagian file aplikasi masih versi lama dari cache (sinyal putus saat update)
    aplikasi bisa error saat dimuat. Hapus cache lalu muat ulang SEKALI. */
@@ -396,6 +396,7 @@
       <input id="a-telatPerMenit" type="hidden" value="0">
       <label class="check" id="potongAlpha-wrap"><input type="checkbox" id="a-potongAlpha"> Potong gaji pokok per hari tidak hadir</label>
       <div id="alphaCV-wrap" class="alphacv"><span class="meta"><b>Tidak hadir tidak dipotong</b> (gaji hari itu tetap dibayar) untuk Group CV:</span> <span id="alphaCV-list"></span></div>
+      <div id="hrCV-wrap" class="alphacv"><span class="meta">Kecuali <b>Upah harian</b> (tetap dipotong saat tidak hadir) untuk Group CV:</span> <span id="hrCV-list"></span></div>
       <div id="hkCV-wrap" class="alphacv"><span class="meta"><b>HK tampil sesuai absen</b> (gaji tetap penuh) untuk Group CV:</span> <span id="hkCV-list"></span></div>
       <label class="check"><input type="checkbox" id="a-potongIzin"> <span id="izin-label">Potong gaji pokok per hari izin (sakit tidak dipotong)</span></label>
       <div class="grid2" style="margin-top:8px">

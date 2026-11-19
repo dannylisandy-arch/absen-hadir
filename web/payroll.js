@@ -298,7 +298,9 @@ export function hitungGaji(records, aturan, gaji, year, month, today = new Date(
   }
   // Hari masuk yang dibayar: hadir di hari kerja + sakit + izin (kecuali izin dipotong)
   // Group CV tertentu (Aturan gaji): tidak ada denda / potongan gaji pokok untuk hari tidak hadir
-  const bebasAlpha = Array.isArray(A.tanpaDendaAlphaCV) && A.tanpaDendaAlphaCV.includes(G.grupCV || "-");
+  // Group CV tertentu (mis. JKP): karyawan Upah harian TETAP dipotong saat tidak hadir; yang bulanan tidak
+  const harianDipotong = mode === "harian" && Array.isArray(A.harianPotongCV) && A.harianPotongCV.includes(G.grupCV || "-");
+  const bebasAlpha = !harianDipotong && Array.isArray(A.tanpaDendaAlphaCV) && A.tanpaDendaAlphaCV.includes(G.grupCV || "-");
   // Group CV tertentu (Aturan gaji, mis. JKP): HK yang tampil = hari yang diabsen, gaji tetap penuh (hanya tampilan)
   const hkAbsen = bebasAlpha && !G.gajiTetap && Array.isArray(A.hkAbsenCV) && A.hkAbsenCV.includes(G.grupCV || "-");
   const hariDibayar = hadirKerja + sakit + cuti + (A.potongIzin ? 0 : izin) + (bebasAlpha && (mode === "prorata" || mode === "harian") ? alpha : 0);   // cuti = hari dibayar

@@ -563,7 +563,7 @@ export function tanya(pesan, opsi = {}){
 }
 
 /* versi aplikasi: tampil di Pengaturan untuk memastikan HP memakai versi terbaru */
-export const VERSI_APP = "2026.11.19a";
+export const VERSI_APP = "2026.11.19b";
 document.querySelectorAll(".versi-app").forEach(async el => {
   const wv = /; wv\)/.test(navigator.userAgent);
   let jari = false;
