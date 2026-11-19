@@ -43,6 +43,8 @@ const AKSES_MENU = [["izin","Persetujuan"],["hari","Laporan"],["kar","Karyawan"]
 const bolehMenu = t => isSuper() || profile?.role !== "admin" || !Array.isArray(profile?.aksesMenu) || profile.aksesMenu.includes(t);
 const bolehGaji = sub => isSuper() || !Array.isArray(profile?.aksesGaji) || profile.aksesGaji.includes(sub);
 // Group CV yang boleh dilihat di Gaji & Pajak (kosong = semua; "-" = tanpa Group CV)
+// admin yang dibatasi Group CV: tiap tulis gaji dicek server per karyawan (maks. ~20 cek per batch) → batch dibuat kecil
+const BATCH_GAJI = () => !isSuper() && Array.isArray(profile?.aksesCV) ? 15 : 400;
 const cvBoleh = u => isSuper() || !Array.isArray(profile?.aksesCV) || profile.aksesCV.includes(u?.grupCV || "-");
 let me = null, profile = null, subs = [], firstLoad = true;
 // Cek HP (dipakai saat login/logout, jadi dideklarasikan paling awal)
@@ -2645,8 +2647,9 @@ async function migrasiModeIkutAturan(){
     let nMode = 0, nPola = 0;
     const isi = list.map(u => { const g = gajiMap[u.uid] || {}, d = { appVer: VERSI_APP };
       if (!g.modeGaji){ d.modeGaji = target; nMode++; } if (!g.polaKerja){ d.polaKerja = tPola; nPola++; } return [u, d]; });
-    for (let i = 0; i < isi.length; i += 400){ const bt = writeBatch(db);
-      isi.slice(i, i + 400).forEach(([u, d]) => bt.set(D("payroll", u.uid), d, { merge: true })); await bt.commit(); }
+    const N = BATCH_GAJI();
+    for (let i = 0; i < isi.length; i += N){ const bt = writeBatch(db);
+      isi.slice(i, i + N).forEach(([u, d]) => bt.set(D("payroll", u.uid), d, { merge: true })); await bt.commit(); }
     isi.forEach(([u, d]) => { const { appVer, ...x } = d; gajiMap[u.uid] = { ...(gajiMap[u.uid] || {}), ...x }; gAwal[u.uid] = { ...(gAwal[u.uid] || {}), ...x }; });
     catatLog(CID, me.uid, profile, "gaji", `"Ikut aturan" dipindah permanen: cara hitung gaji pokok ${nMode} karyawan → ${MODE_NAMA[target] || target}, hari kerja ${nPola} karyawan → ${polaNama}`);
   }catch(e){ migrasiModeJalan = false; console.warn("migrasi mode gaji", e); }
@@ -2928,9 +2931,10 @@ function bukaImportGaji(tombol){
           await setDoc(D("settings", "payroll"), { kolomGaji: daftar, appVer: VERSI_APP }, { merge: true }); aturan.kolomGaji = daftar; kolomEdit = daftar.map(k => ({ ...k })); }
         // cek aturan riwayat sudah aktif (deploy-rules) — kalau belum, upload tetap jalan tanpa riwayat
         const riwayatOk = await cekRiwayat(ok[0].u.uid);
-        for (let i = 0; i < ok.length; i += 200){
+        const NB = Math.min(200, BATCH_GAJI());
+        for (let i = 0; i < ok.length; i += NB){
           const bt = writeBatch(db);
-          ok.slice(i, i + 200).forEach(x => {
+          ok.slice(i, i + NB).forEach(x => {
             const lama = gajiMap[x.u.uid] || {}, { lemburBulanan, potBpjs, pph21, umBulan, ...g } = x.isi;
             if (umBulan !== undefined && perK){ const hm = { ...((lama.umBulan && typeof lama.umBulan === "object") ? lama.umBulan : {}) };
               if (umBulan > 0) hm[perK] = umBulan; else delete hm[perK]; g.umBulan = hm; }
@@ -3430,9 +3434,10 @@ $("#g-save-all").onclick = async () => {
     (ganti ? "\n" + fmtNum(ganti) + " slip yang sudah ada akan diganti dengan hitungan terbaru." : ""))) return;
   $("#g-save-all").disabled = true;
   try{
-    for (let i = 0; i < hasilT().length; i += 400){
+    const NS = BATCH_GAJI();
+    for (let i = 0; i < hasilT().length; i += NS){
       const bt = writeBatch(db);
-      hasilT().slice(i, i + 400).forEach(({ u, r }) => bt.set(D("slips", u.uid + "_" + curYM), slipDoc(u, r)));
+      hasilT().slice(i, i + NS).forEach(({ u, r }) => bt.set(D("slips", u.uid + "_" + curYM), slipDoc(u, r)));
       await bt.commit();
     }
     hasilT().forEach(x => tersimpan.add(x.u.uid));
@@ -4025,11 +4030,12 @@ function bukaManual(tombol, lihatTersimpan = false){
       const ubahGaji = box.querySelector(".mf-gaji-ok")?.checked ? adaGaji : [];
       if (ubahGaji.length){
         try{
-          const rwOk = await cekRiwayat(ubahGaji[0].u.uid), bt = writeBatch(db);
-          ubahGaji.forEach(x => { const g = { ...x.gajiF, ...(x.ekstra.potBpjs != null ? { ikutKes: false, ikutJht: false, ikutJp: false } : {}) };
-            if (rwOk) salinRiwayat(bt, x.u.uid, gajiMap[x.u.uid], "Kehadiran manual: perbarui data gaji");
-            bt.set(D("payroll", x.u.uid), { ...g, appVer: VERSI_APP }, { merge: true }); gajiMap[x.u.uid] = { ...(gajiMap[x.u.uid] || {}), ...g }; });
-          await bt.commit();
+          const rwOk = await cekRiwayat(ubahGaji[0].u.uid), NG = BATCH_GAJI();
+          for (let i = 0; i < ubahGaji.length; i += NG){ const bt = writeBatch(db);
+            ubahGaji.slice(i, i + NG).forEach(x => { const g = { ...x.gajiF, ...(x.ekstra.potBpjs != null ? { ikutKes: false, ikutJht: false, ikutJp: false } : {}) };
+              if (rwOk) salinRiwayat(bt, x.u.uid, gajiMap[x.u.uid], "Kehadiran manual: perbarui data gaji");
+              bt.set(D("payroll", x.u.uid), { ...g, appVer: VERSI_APP }, { merge: true }); gajiMap[x.u.uid] = { ...(gajiMap[x.u.uid] || {}), ...g }; });
+            await bt.commit(); }
           catatLog(CID, me.uid, profile, "gaji", "Perbarui data gaji " + ubahGaji.length + " karyawan dari Excel kehadiran manual " + file.name);
         }catch(err){ msg(f.querySelector(".mf-msg"), "Data gaji gagal diperbarui: " + (err.code || err.message), "bad"); }
       }

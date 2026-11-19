@@ -1,5 +1,5 @@
 // Service worker: notifikasi push (Firebase) + dukungan offline (syarat PWA/APK).
-const VERSI = "absensi-v247";               // naikkan angka ini setiap kali file aplikasi berubah besar
+const VERSI = "absensi-v248";               // naikkan angka ini setiap kali file aplikasi berubah besar
 const FILE_INTI = ["./index.html", "./admin.html", "./index.js", "./admin.js", "./kios.html", "./kios.js", "./offline.html", "./style.css", "./common.js", "./payroll.js", "./excel.js", "./pajak.js",
   "./firebase-config.js", "./manifest.json", "./manifest-admin.json", "./manifest-kios.json", "./icon.svg", "./notif-absen.mp3", "./icons/icon-192.png", "./icons/icon-512.png"];
 

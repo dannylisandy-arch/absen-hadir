@@ -15,9 +15,10 @@ service cloud.firestore {
     // Akses admin per menu Gaji & Group CV (diatur superadmin di Pengaturan › Akses admin; null = semua)
     function aksesG(sub)  { return isSuper() || me().get('aksesGaji', null) == null || sub in me().get('aksesGaji', []); }
     function punyaGaji()  { return isSuper() || me().get('aksesGaji', null) == null || me().get('aksesGaji', []).size() > 0; }
-    function cvOk(uid)    { let g = get(/databases/$(database)/documents/users/$(uid)).data.get('grupCV', '');
-                            return isSuper() || me().get('aksesCV', null) == null
-                              || (g == '' && '-' in me().get('aksesCV', [])) || g in me().get('aksesCV', []); }
+    // (dibuat bertingkat supaya admin tanpa batasan CV tidak memakai jatah get() — penting untuk tulis massal / batch)
+    function cvDi(uid, daftar) { let g = get(/databases/$(database)/documents/users/$(uid)).data.get('grupCV', '');
+                                 return (g == '' && '-' in daftar) || g in daftar; }
+    function cvOk(uid)    { return isSuper() || me().get('aksesCV', null) == null || cvDi(uid, me().get('aksesCV', [])); }
     // penanda demo (data demo dilewati log/riwayat/backup server) hanya boleh dibuat superadmin / server
     function tanpaDemoBaru() { return isSuper() || request.resource.data.get('demo', false) == false
                                  || (resource != null && resource.data.get('demo', false) == true); }
