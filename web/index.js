@@ -16,7 +16,7 @@ import { jamValid, VERSI_APP, app, bunyiNotif, pantauVersiBaru } from "./common.
 import { masaAktif, teksHabis } from "./common.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 import { ATURAN_DEFAULT, petaLibur } from "./payroll.js";
-import { hitungGaji, rincianHTML, cetakSlip, cetakSlips, rp, esc, namaBulan, ym12, hariKerjaAntara, rentang, dayKey, cutiTerpakai } from "./payroll.js";
+import { hitungGaji, rincianHTML, cetakSlip, cetakSlips, kopCV, rp, esc, namaBulan, ym12, hariKerjaAntara, rentang, dayKey, cutiTerpakai } from "./payroll.js";
 
 // Versi HTML & JS harus sama; kalau beda (cache campur, mis. HTML lama + JS baru) -> hapus cache & muat ulang sekali
 { const vH = document.querySelector('meta[name="versi-app"]')?.content;
@@ -95,7 +95,7 @@ function renderLokasiInfo(){
   box.innerHTML = list.map(L => `<b>${esc(L.nama)}</b> · radius ${fmtNum((L.rad || 0) + tb)} m${tb ? ` <span class="meta">(termasuk tambahan ${fmtNum(tb)} m)</span>` : ""}${L.alamat ? "<br><span class=\"meta\">📍 " + esc(L.alamat) + "</span>" : ""}`).join("<hr class=\"tipis\">") +
     `<div class="meta" style="margin-top:8px">Diatur oleh admin. Absen dicocokkan ke lokasi terdekat.</div>`;
 }
-let unsubMetode = null, ptSaya = null, unsubHariIni = null;
+let unsubMetode = null, ptSaya = null, ptSlip = null, unsubHariIni = null;
 /* Absen masuk & pulang bergantian, dilihat dari absen terakhir:
    - terakhir MASUK  -> Masuk terkunci, Pulang aktif
    - terakhir PULANG / belum ada -> Masuk aktif, Pulang terkunci
@@ -284,6 +284,9 @@ async function mulai(user){
   CID = profile.cid;
   // masa coba / langganan perusahaan habis -> tidak bisa masuk (data tetap tersimpan)
   try{ const co0 = await getDoc(doc(db, "companies", CID)); if (co0.exists()) ptSaya = co0.data(); }catch(e){}
+  // slip gaji karyawan Group CV memakai kop nama CV-nya
+  ptSlip = ptSaya;
+  try{ if (profile.grupCV){ const cv0 = await getDoc(doc(db, "companies", CID, "settings", "grupcv")); ptSlip = kopCV(ptSaya, cv0.exists() ? cv0.data().daftar : [], profile.grupCV); } }catch(e){}
   if (masaAktif(ptSaya).habis){ await signOut(auth); msg($("#auth-msg"), teksHabis(ptSaya), "bad"); return; }
   const jm = jenisMasuk();
   if (jm) catatLog(CID, user.uid, profile, jm, jm === "login" ? "Login ke aplikasi karyawan" : "Membuka aplikasi karyawan");
@@ -1298,7 +1301,7 @@ async function lihatGaji(){
       ${rincianHTML(r, false)}
       <button class="small alt" id="g-slip">Cetak slip</button></div>
       ${pinjamanHTML(pinjaman, ym)}`;
-    $("#g-slip").onclick = () => { if (!cetakSlip(r, profile.nama, periode, ptSaya)) toast("Izinkan pop-up untuk mencetak slip."); };
+    $("#g-slip").onclick = () => { if (!cetakSlip(r, profile.nama, periode, ptSlip || ptSaya)) toast("Izinkan pop-up untuk mencetak slip."); };
   }catch(e){ out.innerHTML = '<p class="meta">Gagal memuat: ' + (e.code || e.message) + '</p>'; }
 }
 $("#g-hitung").onclick = lihatGaji;
@@ -1516,7 +1519,7 @@ function renderSlipKaryawan(list, box, rekapEl, printAll){
       <div><span class="meta">Total lembur</span><b>${fmtNum(sum("jamLembur"))} jam</b></div>
     </div>`;
   printAll.onclick = () => {
-    if (!cetakSlips(list.map(x => ({ r: x.hasil, nama: x.nama, periode: x.label })), "Slip Gaji " + list[0].nama + " " + list.length + " bulan", ptSaya))
+    if (!cetakSlips(list.map(x => ({ r: x.hasil, nama: x.nama, periode: x.label })), "Slip Gaji " + list[0].nama + " " + list.length + " bulan", ptSlip || ptSaya))
       toast("Izinkan pop-up untuk mencetak slip.");
   };
   box.replaceChildren(...list.map((x, i) => {
@@ -1537,7 +1540,7 @@ function renderSlipKaryawan(list, box, rekapEl, printAll){
         body.innerHTML = `<div class="meta">Hadir ${fmtNum(x.hasil.hadirKerja)}/${fmtNum(x.hasil.hariKerja)} hari · Telat ${fmtNum(x.hasil.kaliTelat)}x · Lembur ${fmtNum(x.hasil.jamLembur)} jam</div>
           ${rincianHTML(x.hasil, false)}
           <div class="btns"><button class="small alt b-tutup">Tutup</button><button class="small b-cetak">Cetak slip</button></div>`;
-        body.querySelector(".b-cetak").onclick = () => { if (!cetakSlip(x.hasil, x.nama, x.label, ptSaya)) toast("Izinkan pop-up untuk mencetak slip."); };
+        body.querySelector(".b-cetak").onclick = () => { if (!cetakSlip(x.hasil, x.nama, x.label, ptSlip || ptSaya)) toast("Izinkan pop-up untuk mencetak slip."); };
         body.querySelector(".b-tutup").onclick = () => {
           body.hidden = true; row.classList.remove("open"); head.setAttribute("aria-expanded", "false");
           head.scrollIntoView({ block: "nearest", behavior: "smooth" }); head.focus({ preventScroll: true });

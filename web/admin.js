@@ -21,7 +21,7 @@ import { bacaTabel, buatXlsx, buatXlsxGaya } from "./excel.js";
 import { auth, db, $, msg, toast, jenis, tsOf, fmtWaktu, fmtJam, STATUS, authError, enableNotif, refreshNotif, fmtNum, parseDec, parseInt0 } from "./common.js";
 import { gajiPeriode, nilaiKolom, nilaiWarisan, LUPA_ABSEN, PTKP, kategoriTER } from "./payroll.js";
 import { kopHTML, KOP_CSS, rentangPeriode, dayKey, daftarLibur, tahunLibur, jadwalPinjaman, angsuranPeriode, statusPinjaman, ymTambah, ymLabel, KOLOM_PINJAMAN } from "./payroll.js";
-import { ATURAN_DEFAULT, hitungGaji, rincianHTML, cetakSlip, cetakSlips, rp, esc, namaBulan, ym12, bersihkan, rentang, hariKerjaAntara, cutiTerpakai } from "./payroll.js";
+import { ATURAN_DEFAULT, hitungGaji, rincianHTML, cetakSlip, cetakSlips, kopCV, rp, esc, namaBulan, ym12, bersihkan, rentang, hariKerjaAntara, cutiTerpakai } from "./payroll.js";
 
 // Versi HTML & JS harus sama; kalau beda (cache campur, mis. HTML lama + JS baru) -> hapus cache & muat ulang sekali
 { const vH = document.querySelector('meta[name="versi-app"]')?.content;
@@ -3350,7 +3350,7 @@ function renderHasil(){
     c.querySelector(".b-rinci").onclick = e => {
       const el = c.querySelector(".rinci"); el.hidden = false; popup(el, "Rincian gaji · " + u.nama, e.currentTarget);
     };
-    c.querySelector(".b-slip").onclick = () => { if (!cetakSlip(r, u.nama, periode, perusahaan)) toast("Izinkan pop-up untuk mencetak slip."); };
+    c.querySelector(".b-slip").onclick = () => { if (!cetakSlip(r, u.nama, periode, kopCV(perusahaan, daftarCV, u.grupCV))) toast("Izinkan pop-up untuk mencetak slip."); };
     c.querySelector(".b-save").onclick = async e => {
       if (ada && !await tanya("Slip " + u.nama + " " + periode + " sudah tersimpan. Ganti dengan hitungan terbaru?")) return;
       e.target.disabled = true;
@@ -3418,7 +3418,7 @@ const slipDoc = (u, r) => ({ uid: u.uid, nama: u.nama, periode: curYM, label: pe
 $("#g-peran-f").onchange = $("#g-cv-f").onchange = () => { renderHasil(); };
 $("#g-print-all").onclick = () => {
   catatLog(CID, me.uid, profile, "ekspor", "Mencetak semua slip gaji " + periode);
-  if (!cetakSlips(hasilT().map(({ u, r }) => ({ r, nama: u.nama, periode })), "Slip Gaji " + periode, perusahaan)) toast("Izinkan pop-up untuk mencetak slip.");
+  if (!cetakSlips(hasilT().map(({ u, r }) => ({ r, nama: u.nama, periode, pt: kopCV(perusahaan, daftarCV, u.grupCV) })), "Slip Gaji " + periode, perusahaan)) toast("Izinkan pop-up untuk mencetak slip.");
 };
 $("#g-save-all").onclick = async () => {
   const ganti = hasilT().filter(x => tersimpan.has(x.u.uid)).length;
@@ -3455,7 +3455,7 @@ function renderSlipList(list, box, totalEl, printAll){
   const tot = list.reduce((s, x) => s + x.bersih, 0);
   totalEl.innerHTML = `<div class="meta">Total ${fmtNum(list.length)} bulan</div><div class="big">${rp(tot)}</div>
     <div class="meta">Rata-rata ${rp(tot / list.length)} per bulan</div>`;
-  printAll.onclick = () => { if (!cetakSlips(list.map(x => ({ r: x.hasil, nama: x.nama, periode: x.label })), "Slip Gaji " + list[0].nama + " 12 bulan", perusahaan)) toast("Izinkan pop-up untuk mencetak slip."); };
+  printAll.onclick = () => { if (!cetakSlips(list.map(x => ({ r: x.hasil, nama: x.nama, periode: x.label })), "Slip Gaji " + list[0].nama + " 12 bulan", kopCV(perusahaan, daftarCV, karyawan.find(k => k.uid === uid)?.grupCV))) toast("Izinkan pop-up untuk mencetak slip."); };
   box.replaceChildren(...list.map(x => {
     const c = document.createElement("div"); c.className = "card";
     c.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
@@ -3464,7 +3464,7 @@ function renderSlipList(list, box, totalEl, printAll){
       <div class="rinci" hidden>${rincianHTML(x.hasil, false)}</div>
       <div class="btns" style="margin-top:10px"><button class="small alt b-rinci">Rincian</button><button class="small b-slip">Cetak</button></div>`;
     c.querySelector(".b-rinci").onclick = e => { const el = c.querySelector(".rinci"); el.hidden = !el.hidden; e.target.textContent = el.hidden ? "Rincian" : "Tutup"; };
-    c.querySelector(".b-slip").onclick = () => { if (!cetakSlip(x.hasil, x.nama, x.label, perusahaan)) toast("Izinkan pop-up untuk mencetak slip."); };
+    c.querySelector(".b-slip").onclick = () => { if (!cetakSlip(x.hasil, x.nama, x.label, kopCV(perusahaan, daftarCV, karyawan.find(k => k.uid === uid)?.grupCV))) toast("Izinkan pop-up untuk mencetak slip."); };
     return c;
   }));
 }

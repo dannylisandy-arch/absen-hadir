@@ -519,12 +519,13 @@ export function cetakSlips(list, judul = "Slip Gaji", pt = null){
   const w = window.open("", "_blank");
   if (!w) return false;
   // Halaman 1: slip + rekap absensi. Halaman 2: rincian absensi harian.
-  const halaman = list.map(({ r, nama, periode }) => `<section class="page">${kopHTML(pt)}
+  // kop per slip: kalau karyawan punya Group CV, kop memakai nama CV itu (item.pt), selain itu kop perusahaan
+  const halaman = list.map(({ r, nama, periode, pt: ptItem }) => { const kp = ptItem || pt; return `<section class="page">${kopHTML(kp)}
     <h1>Slip Gaji</h1><p>${esc(nama)} · ${esc(periode)}</p>
     ${rincianHTML(r, false)}</section>
-    ${r.rows?.length ? `<section class="page">${kopHTML(pt)}
+    ${r.rows?.length ? `<section class="page">${kopHTML(kp)}
     <h1>Rincian Absensi</h1><p>${esc(nama)} · ${esc(periode)}${r.periodeLabel && r.periodeLabel !== periode ? " · " + esc(r.periodeLabel) : ""}</p>
-    ${harianHTML(r)}</section>` : ""}`).join("");
+    ${harianHTML(r)}</section>` : ""}`; }).join("");
   w.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>${esc(judul)}</title>
   <style>body{font-family:system-ui,sans-serif;max-width:640px;margin:24px auto;padding:0 16px;color:#13213C}
   h1{font-size:1.3rem;margin:0}p{margin:4px 0 16px;color:#5B6878}
@@ -543,6 +544,12 @@ export function cetakSlips(list, judul = "Slip Gaji", pt = null){
   return true;
 }
 export const cetakSlip = (r, nama, periode, pt = null) => cetakSlips([{ r, nama, periode }], `Slip Gaji ${nama} ${periode}`, pt);
+// Kop slip untuk karyawan Group CV: nama (dan logo/alamat bila diisi) CV, alamat jatuh ke alamat perusahaan
+export function kopCV(pt, daftarCV, grupCV){
+  const cv = (daftarCV || []).find(c => c.id === grupCV);
+  if (!cv?.nama) return pt;
+  return { nama: cv.nama, logo: cv.logo || "", alamat: cv.alamat || pt?.alamat || "", telp: cv.telp || pt?.telp || "" };
+}
 
 // Helper periode "YYYY-MM"
 export const ym = (y, m) => y + "-" + String(m + 1).padStart(2, "0");
