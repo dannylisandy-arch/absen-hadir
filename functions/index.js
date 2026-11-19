@@ -144,6 +144,11 @@ const kunciTgl = d => d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" 
 // Jam WIB (UTC+7) -> Timestamp
 const wib = (y, m, d, jam, menit) => Timestamp.fromDate(new Date(Date.UTC(y, m, d, jam - 7, menit)));
 
+// Masa aktif langganan perusahaan (sama seperti coAktif di firestore.rules); superadmin selalu boleh
+function cekMasaAktif(co, superadmin){
+  const ts = co?.aktifSampaiTs;
+  if (!superadmin && ts?.toMillis && ts.toMillis() < Date.now()) throw new HttpsError("failed-precondition", "Masa aktif perusahaan sudah habis. Hubungi superadmin.");
+}
 async function cekAdmin(req){
   if (!req.auth) throw new HttpsError("unauthenticated", "Harus login.");
   const me = (await db.collection("users").doc(req.auth.uid).get()).data() || {};
@@ -153,6 +158,7 @@ async function cekAdmin(req){
   if (!boleh) throw new HttpsError("permission-denied", "Hanya admin perusahaan ini yang bisa.");
   const co = await db.collection("companies").doc(cid).get();
   if (!co.exists) throw new HttpsError("not-found", "Perusahaan tidak ditemukan.");
+  cekMasaAktif(co.data(), me.role === "superadmin");
   return { cid, co: co.data(), oleh: me.nama || "Admin", superadmin: me.role === "superadmin" };
 }
 async function tulisBanyak(ops){
@@ -330,6 +336,9 @@ exports.ubahPassword = onCall({ enforceAppCheck: WAJIB_APPCHECK }, async (req) =
   if (!superadmin && !adminSama) throw new HttpsError("permission-denied", "Hanya admin perusahaan ini yang bisa mengubah password.");
   if (t.role === "superadmin" && !superadmin) throw new HttpsError("permission-denied", "Password superadmin tidak bisa diubah oleh admin.");
   if (t.akunDemo && !superadmin) throw new HttpsError("permission-denied", "Password akun demo publik dikunci. Hanya superadmin yang bisa mengubahnya.");
+  // hak akses admin hanya diatur superadmin: password admin lain hanya bisa diganti superadmin
+  if (t.role === "admin" && !superadmin && uid !== req.auth.uid) throw new HttpsError("permission-denied", "Password akun admin lain hanya bisa diganti superadmin.");
+  if (!superadmin) cekMasaAktif((await db.collection("companies").doc(t.cid).get()).data(), false);
   await getAuth().updateUser(uid, { password: pw });
   await getAuth().revokeRefreshTokens(uid);                 // keluarkan sesi lama di perangkat lain
   await tSnap.ref.update({ passwordDiubah: FieldValue.serverTimestamp(), passwordDiubahOleh: me.nama || "Admin" });
@@ -353,8 +362,13 @@ exports.hapusKaryawan = onCall({ timeoutSeconds: 300, memory: "512MiB", enforceA
   if (!superadmin && !adminSama) throw new HttpsError("permission-denied", "Hanya admin perusahaan ini yang bisa menghapus karyawan.");
   if (t.role === "superadmin") throw new HttpsError("permission-denied", "Akun superadmin tidak bisa dihapus dari sini.");
   if (!superadmin && t.akunDemo) throw new HttpsError("permission-denied", "Akun demo publik hanya bisa dihapus superadmin.");
-  if (!superadmin && t.cid && (await db.collection("companies").doc(t.cid).get()).data()?.modeDemo)
-    throw new HttpsError("permission-denied", "Perusahaan demo publik: karyawan hanya bisa dihapus superadmin.");
+  if (t.role === "admin" && !superadmin) throw new HttpsError("permission-denied", "Akun admin hanya bisa dihapus superadmin.");
+  // hapus data riwayat (absen dll.) sama dengan menghapus absen: perlu izin "Boleh ubah & hapus absen"
+  if (hapusData && !superadmin && me.bolehEditAbsen !== true)
+    throw new HttpsError("permission-denied", "Menghapus data riwayat absen hanya untuk superadmin atau admin yang diberi izin ubah & hapus absen. Hapus akun tanpa centang hapus data.");
+  if (!superadmin && t.cid){ const coD = (await db.collection("companies").doc(t.cid).get()).data();
+    if (coD?.modeDemo) throw new HttpsError("permission-denied", "Perusahaan demo publik: karyawan hanya bisa dihapus superadmin.");
+    cekMasaAktif(coD, false); }
 
   try{ await getAuth().deleteUser(uid); }catch(e){ if (e.code !== "auth/user-not-found") throw e; }
   const ops = [[tSnap.ref, null]];
@@ -618,11 +632,13 @@ const zlib = require("zlib");
 const crypto = require("crypto");
 const MAKS_BACKUP = 30;
 // hanya simpan 30 backup terbaru per perusahaan (manual + otomatis + sebelum-restore); yang lebih lama dihapus
+// Auto BackUp dan BackUp manual dihitung TERPISAH (masing-masing 30 terbaru), supaya klik BackUp manual berkali-kali tidak menghapus Auto BackUp
 async function rapikanBackup(cid){
   try{
     const [files] = await getStorage().bucket().getFiles({ prefix: `backup/${cid}/` });
     const urut = files.filter(f => f.name.endsWith(".json.gz")).sort((a, b) => String(b.metadata.timeCreated).localeCompare(String(a.metadata.timeCreated)));
-    for (const f of urut.slice(MAKS_BACKUP)) await f.delete().catch(() => {});
+    const oto = urut.filter(f => /_otomatis\.json\.gz$/.test(f.name)), lain = urut.filter(f => !/_otomatis\.json\.gz$/.test(f.name));
+    for (const f of [...oto.slice(MAKS_BACKUP), ...lain.slice(MAKS_BACKUP)]) await f.delete().catch(() => {});
   }catch(e){ console.error("rapikanBackup", cid, e.message); }
 }
 const keJson = v => {
@@ -701,6 +717,17 @@ exports.backupAksi = onCall({ timeoutSeconds: 540, memory: "1GiB", enforceAppChe
       .sort((a, b) => String(b.waktu).localeCompare(String(a.waktu))) };
   }
   if (aksi === "buat"){
+    // BackUp manual oleh admin/supervisor: masa aktif harus berlaku & maksimal 1 kali per 10 menit per perusahaan
+    // (penanda di koleksi backupInfo yang tidak bisa diakses aplikasi)
+    if (me.role !== "superadmin"){
+      cekMasaAktif((await db.collection("companies").doc(cid).get()).data(), false);
+      const infoRef = db.collection("backupInfo").doc(cid);
+      await db.runTransaction(async tx => {
+        const t = (await tx.get(infoRef)).data()?.manualTerakhir?.toMillis?.() || 0, sisa = Math.ceil((t + 10 * 60000 - Date.now()) / 60000);
+        if (sisa > 0) throw new HttpsError("resource-exhausted", `BackUp manual baru saja dibuat. Coba lagi ${sisa} menit lagi.`);
+        tx.set(infoRef, { manualTerakhir: FieldValue.serverTimestamp(), oleh: me.nama || "" }, { merge: true });
+      });
+    }
     const r = await buatBackupCid(cid, "manual", me.nama);
     await catatLog(cid, p, "sistem", "BackUp data ke server (" + Object.entries(r.jumlah).map(([k, v]) => k + " " + v).join(", ") + ")");
     return r;

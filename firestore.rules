@@ -12,6 +12,15 @@ service cloud.firestore {
     function boss(cid)    { return isSuper() || (inCo(cid) && me().role in ['admin', 'supervisor']); }
     function adminOf(cid) { return isSuper() || (inCo(cid) && me().role == 'admin'); }
     // ubah / hapus absen: superadmin, atau admin yang diberi izin superadmin (users.bolehEditAbsen)
+    // Akses admin per menu Gaji & Group CV (diatur superadmin di Pengaturan › Akses admin; null = semua)
+    function aksesG(sub)  { return isSuper() || me().get('aksesGaji', null) == null || sub in me().get('aksesGaji', []); }
+    function punyaGaji()  { return isSuper() || me().get('aksesGaji', null) == null || me().get('aksesGaji', []).size() > 0; }
+    function cvOk(uid)    { let g = get(/databases/$(database)/documents/users/$(uid)).data.get('grupCV', '');
+                            return isSuper() || me().get('aksesCV', null) == null
+                              || (g == '' && '-' in me().get('aksesCV', [])) || g in me().get('aksesCV', []); }
+    // penanda demo (data demo dilewati log/riwayat/backup server) hanya boleh dibuat superadmin / server
+    function tanpaDemoBaru() { return isSuper() || request.resource.data.get('demo', false) == false
+                                 || (resource != null && resource.data.get('demo', false) == true); }
     function editAbsen(cid) { return isSuper() || (adminOf(cid) && me().get('bolehEditAbsen', false) == true); }
 
     // Kode perusahaan -> id perusahaan. Boleh dibaca satu per satu (untuk pendaftaran), tidak boleh didaftar.
@@ -39,6 +48,7 @@ service cloud.firestore {
             || boss(request.resource.data.cid) && request.resource.data.role == 'karyawan')
         && ((request.resource.data.get('akunDemo', false) == false && request.resource.data.get('passwordDemo', '') == '') || isSuper())
         && (request.resource.data.get('bolehEditAbsen', false) == false || isSuper())
+        && (request.resource.data.get('demo', false) == false || isSuper())
         && ((request.resource.data.get('aksesGaji', null) == null && request.resource.data.get('aksesCV', null) == null && request.resource.data.get('aksesMenu', null) == null) || isSuper());
       allow update: if isSuper()
         // pengguna mengubah profilnya sendiri tanpa mengubah peran & perusahaan
@@ -71,6 +81,9 @@ service cloud.firestore {
             && request.resource.data.cid == resource.data.cid
             && request.resource.data.role in ['karyawan', 'supervisor', 'admin']
             && resource.data.role != 'superadmin'
+            // akun admin lain hanya diubah superadmin (admin tetap boleh mengubah datanya sendiri)
+            && (resource.data.role != 'admin' || request.auth.uid == uid)
+            && tanpaDemoBaru()
             // hak akses admin hanya diatur superadmin: admin tidak bisa mengangkat / menurunkan akun admin
             && ((request.resource.data.role != 'admin' && resource.data.role != 'admin') || request.resource.data.role == resource.data.role)
             // akun demo publik: penanda & perannya dikunci untuk selain superadmin
@@ -124,7 +137,8 @@ service cloud.firestore {
         && (isSuper() || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['aktifSampai', 'aktifSampaiTs', 'paket']))
         && (isSuper() || request.resource.data.get('modeDemo', false) == resource.data.get('modeDemo', false))
         // tampil/sembunyi mode kios hanya diatur superadmin
-        && (isSuper() || request.resource.data.get('kiosAktif', true) == resource.data.get('kiosAktif', true));
+        && (isSuper() || request.resource.data.get('kiosAktif', true) == resource.data.get('kiosAktif', true))
+        && (isSuper() || request.resource.data.get('demo', false) == resource.data.get('demo', false));
 
       match /settings/{id} {
         allow read:  if isSuper() || inCo(cid);
@@ -133,7 +147,7 @@ service cloud.firestore {
           || (request.resource.data.appVer is string && request.resource.data.appVer >= '2026.11.17d'))
           // daftar peran & akses hanya diatur superadmin
           && (id != 'peran' || isSuper());
-        allow delete: if adminOf(cid);
+        allow delete: if adminOf(cid) && id != 'payroll' && (id != 'peran' || isSuper());
       }
 
       match /absensi/{id} {
@@ -157,6 +171,7 @@ service cloud.firestore {
           && request.resource.data.status in ['otomatis', 'menunggu']
           && request.resource.data.ts == request.time
           && request.resource.data.byUid == request.auth.uid
+          && request.resource.data.get('demo', false) == false
           && get(/databases/$(database)/documents/users/$(request.resource.data.uid)).data.cid == cid)
         // Absen manual oleh admin/superadmin (misalnya HP karyawan rusak, kondisi khusus) & impor Excel:
         // langsung sah, tanggal & jam bebas (tanpa batas)
@@ -166,6 +181,7 @@ service cloud.firestore {
           && request.resource.data.status == 'terima'
           && request.resource.data.ts is timestamp
           && request.resource.data.byUid == request.auth.uid
+          && (request.resource.data.get('demo', false) == false || isSuper())
           && get(/databases/$(database)/documents/users/$(request.resource.data.uid)).data.cid == cid)
         // Pengajuan "lupa absen" yang disetujui admin/supervisor: absen dicatat sesuai tanggal & jam pengajuan
         || (boss(cid)
@@ -219,6 +235,7 @@ service cloud.firestore {
           && request.resource.data.mulai <= request.resource.data.selesai
           && request.resource.data.status == 'menunggu'
           && request.resource.data.ts == request.time
+          && !('demo' in request.resource.data)
           && (!('lampiran' in request.resource.data)
               || (request.resource.data.lampiran is list && request.resource.data.lampiran.size() <= 3))
           // "tidak bisa absen masuk" wajib melampirkan foto
@@ -233,13 +250,16 @@ service cloud.firestore {
       }
 
       match /payroll/{uid} {
-        allow read:  if adminOf(cid) || (inCo(cid) && request.auth.uid == uid);
+        allow read:  if (adminOf(cid) && punyaGaji()) || (inCo(cid) && request.auth.uid == uid);
         // hanya aplikasi versi baru (yang aman, tidak menimpa data) yang boleh menulis; halaman versi lama ditolak
-        allow create, update: if adminOf(cid) && request.resource.data.appVer is string && request.resource.data.appVer >= '2026.11.17d';
-        allow delete: if adminOf(cid);
-        // Riwayat data gaji: salinan sebelum setiap perubahan (untuk dikembalikan); tidak bisa diubah, hanya superadmin yang boleh menghapus
+        // admin yang dibatasi superadmin: hanya karyawan Group CV miliknya; penanda demo tidak boleh dibuat
+        allow create, update: if adminOf(cid) && punyaGaji() && cvOk(uid) && tanpaDemoBaru()
+          && request.resource.data.appVer is string && request.resource.data.appVer >= '2026.11.17d';
+        allow delete: if adminOf(cid) && punyaGaji() && cvOk(uid);
+        // Riwayat data gaji: dibuat server (functions logGaji) sebelum setiap perubahan; tidak bisa dibuat/diubah aplikasi, hanya superadmin yang boleh menghapus
         match /riwayat/{rid} {
-          allow read, create: if adminOf(cid);
+          allow read: if adminOf(cid) && punyaGaji();
+          allow create: if false;
           allow update: if false;
           allow delete: if isSuper();
         }
@@ -251,7 +271,12 @@ service cloud.firestore {
         allow create: if (inCo(cid) || isSuper())
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.ts == request.time
-          && request.resource.data.sumber == 'aplikasi';
+          && request.resource.data.sumber == 'aplikasi'
+          // nama & peran harus akun pengirim sendiri; isi dibatasi panjangnya
+          && request.resource.data.get('nama', '') == me().get('nama', '')
+          && request.resource.data.get('role', '') == me().get('role', '')
+          && request.resource.data.get('ket', '') is string && request.resource.data.get('ket', '').size() <= 2000
+          && request.resource.data.get('aksi', '') is string && request.resource.data.get('aksi', '').size() <= 40;
       }
 
       // Keputusan cek lembur: { uid, nama, tanggal, status: lembur|lupa, jam? }
@@ -259,7 +284,8 @@ service cloud.firestore {
         allow read: if boss(cid) || (inCo(cid) && resource.data.uid == request.auth.uid);
         // keputusan lembur / lupa absen pulang / koreksi Lebih HK (lhkJam) per karyawan per tanggal.
         // keputusan bertanda superadmin (lembur di bawah batas) hanya bisa dibuat/diubah/dihapus superadmin
-        allow write: if boss(cid)
+        // keputusan lembur & Lebih HK memengaruhi gaji: hanya admin / superadmin (supervisor tidak)
+        allow write: if adminOf(cid)
           && (resource == null || resource.data.get('superadmin', false) != true || isSuper())
           && (request.method == 'delete' || (request.resource.data.status in ['lembur', 'lupa', 'koreksi'] && request.resource.data.uid is string
               && (!('lhkJam' in request.resource.data) || request.resource.data.lhkJam is number)
@@ -268,11 +294,13 @@ service cloud.firestore {
 
       // Kehadiran manual per periode (upload Excel, mis. operator & supir): { data: { uid: { hari, lembur, uangLembur?, ket } } }
       match /kehadiranManual/{ym} {
-        allow read: if adminOf(cid);
-        allow create, update: if adminOf(cid) && request.resource.data.appVer is string && request.resource.data.appVer >= '2026.11.17d';
-        allow delete: if adminOf(cid);
+        allow read: if adminOf(cid) && punyaGaji();
+        allow create, update: if adminOf(cid) && (aksesG('hitung') || aksesG('karyawan'))
+          && request.resource.data.appVer is string && request.resource.data.appVer >= '2026.11.17d';
+        allow delete: if adminOf(cid) && (aksesG('hitung') || aksesG('karyawan'));
         match /riwayat/{rid} {
-          allow read, create: if adminOf(cid);
+          allow read: if adminOf(cid) && punyaGaji();
+          allow create: if false;
           allow update: if false;
           allow delete: if isSuper();
         }
@@ -280,10 +308,10 @@ service cloud.firestore {
 
       // Pinjaman karyawan: dikelola admin, karyawan hanya bisa melihat pinjamannya sendiri
       match /pinjaman/{id} {
-        allow read:  if adminOf(cid) || (inCo(cid) && resource.data.uid == request.auth.uid);
-        allow delete: if adminOf(cid);
-        allow create, update: if adminOf(cid)
-          && request.resource.data.uid is string
+        allow read:  if (adminOf(cid) && punyaGaji()) || (inCo(cid) && resource.data.uid == request.auth.uid);
+        allow delete: if adminOf(cid) && punyaGaji() && cvOk(resource.data.uid);
+        allow create, update: if adminOf(cid) && punyaGaji()
+          && request.resource.data.uid is string && cvOk(request.resource.data.uid)
           && request.resource.data.jumlah is number && request.resource.data.jumlah > 0
           && request.resource.data.tenor is int && request.resource.data.tenor >= 1 && request.resource.data.tenor <= 120
           && request.resource.data.mulai is string;
@@ -307,12 +335,13 @@ service cloud.firestore {
 
       // Kertas kerja Pajak & BPJS per bulan (menu Pajak & BPJS): hanya admin
       match /pajak/{ym} {
-        allow read, write: if adminOf(cid);
+        allow read, write: if adminOf(cid) && aksesG('pajak');
       }
 
       match /slips/{id} {
-        allow read:  if adminOf(cid) || (inCo(cid) && resource.data.uid == request.auth.uid);
-        allow write: if adminOf(cid);
+        allow read:  if (adminOf(cid) && punyaGaji()) || (inCo(cid) && resource.data.uid == request.auth.uid);
+        allow create, update: if adminOf(cid) && punyaGaji() && cvOk(request.resource.data.uid);
+        allow delete: if adminOf(cid) && punyaGaji() && cvOk(resource.data.uid);
       }
     }
   }

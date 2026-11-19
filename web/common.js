@@ -476,7 +476,7 @@ export async function catatLog(cid, uid, profil, aksi, ket){
     const [perangkat, pos] = await Promise.all([perangkatInfo(), posisiLog().catch(() => null)]);
     const gps = pos ? { la: pos.la, lo: pos.lo, acc: pos.acc, ...(pos.alamat ? { alamat: pos.alamat } : {}) } : {};
     await addDoc(collection(db, "companies", cid, "log"), { ts: serverTimestamp(), uid, nama: profil?.nama || "", role: profil?.role || "",
-      aksi, ket, perangkat, sumber: "aplikasi", ...gps });
+      aksi: String(aksi || "").slice(0, 40), ket: String(ket ?? "").slice(0, 2000), perangkat, sumber: "aplikasi", ...gps });
   }catch(e){ /* log tidak boleh mengganggu aplikasi */ }
 }
 // "Login" saat form login dipakai; "Membuka aplikasi" saat sesi lama dipakai lagi (sekali per tab)
@@ -563,7 +563,7 @@ export function tanya(pesan, opsi = {}){
 }
 
 /* versi aplikasi: tampil di Pengaturan untuk memastikan HP memakai versi terbaru */
-export const VERSI_APP = "2026.11.19c";
+export const VERSI_APP = "2026.11.19d";
 document.querySelectorAll(".versi-app").forEach(async el => {
   const wv = /; wv\)/.test(navigator.userAgent);
   let jari = false;

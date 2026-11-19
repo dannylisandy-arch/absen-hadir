@@ -28,7 +28,9 @@ service firebase.storage {
         request.auth.uid == uid
         || user(request.auth.uid).role == 'superadmin'
         || (user(request.auth.uid).role in ['admin', 'supervisor'] && user(request.auth.uid).cid == user(uid).cid));
-      allow delete: if request.auth != null && request.auth.uid == uid;
+      // pemilik hanya boleh menghapus foto yang belum jadi absen (batal / gagal kirim); foto bukti absen yang sudah tercatat tidak bisa dihapus
+      allow delete: if request.auth != null && request.auth.uid == uid
+        && !firestore.exists(/databases/(default)/documents/companies/$(user(uid).cid)/absensi/$(file.split('[.]')[0]));
     }
     // Surat karyawan berhenti: berhenti/{cid}/{uid}/{namaFile} (diunggah admin/superadmin)
     match /berhenti/{cid}/{uid}/{file} {
@@ -66,7 +68,10 @@ service firebase.storage {
         request.auth.uid == uid
         || user(request.auth.uid).role == 'superadmin'
         || (user(request.auth.uid).role in ['admin', 'supervisor'] && user(request.auth.uid).cid == user(uid).cid));
-      allow delete: if request.auth != null && request.auth.uid == uid;
+      // pemilik hanya boleh menghapus lampiran pengajuan yang batal / masih menunggu (bukti pengajuan yang sudah diputuskan tetap ada)
+      allow delete: if request.auth != null && request.auth.uid == uid
+        && (!firestore.exists(/databases/(default)/documents/companies/$(user(uid).cid)/izin/$(izinId))
+            || firestore.get(/databases/(default)/documents/companies/$(user(uid).cid)/izin/$(izinId)).data.status == 'menunggu');
     }
   }
 }

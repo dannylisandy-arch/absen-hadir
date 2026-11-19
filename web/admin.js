@@ -2094,6 +2094,8 @@ function tampilLembur(){
     };
     if ((x.bawah || x.kep?.superadmin) && !isSuper()){
       c.querySelectorAll(".lb-aksi input, .lb-aksi button").forEach(el => { el.disabled = true; el.title = "Hanya superadmin yang bisa mengubah"; }); }
+    // keputusan lembur memengaruhi gaji: hanya admin / superadmin (supervisor hanya melihat)
+    if (!isAdmin()) c.querySelectorAll(".lb-aksi input, .lb-aksi button").forEach(el => { el.disabled = true; el.title = "Hanya admin yang bisa memutuskan lembur"; });
     const bok = c.querySelector(".b-ok"); if (bok) bok.onclick = e => simpan("lembur", e.currentTarget);
     const blp = c.querySelector(".b-lupa"); if (blp) blp.onclick = e => simpan("lupa", e.currentTarget);
     const rs = c.querySelector(".b-reset-lb");
@@ -2507,7 +2509,9 @@ async function hapusAbsen(id, r, tombolAsal, sesudah){
   }catch(err){ toast(err.code === "permission-denied" ? "Ditolak server. Hanya superadmin yang bisa menghapus absen; pastikan deploy-rules.bat sudah dijalankan." : "Gagal: " + (err.code || err.message)); tombolAsal.disabled = false; }
 }
 function unduhCSV(rows, nama){
-  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(";")).join("\r\n");
+  // teks diawali = + - @ (rumus) dinetralkan supaya tidak dijalankan Excel (CSV injection); angka biasa tetap
+  const aman = v => { const t = String(v ?? ""); return typeof v !== "number" && /^[=+\-@\t\r]/.test(t) ? "'" + t : t; };
+  const csv = rows.map(r => r.map(v => '"' + aman(v).replace(/"/g, '""') + '"').join(";")).join("\r\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
   a.download = nama; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -2635,7 +2639,7 @@ let migrasiModeJalan = false;
 async function migrasiModeIkutAturan(){
   if (migrasiModeJalan || !CID || !bolehGaji("karyawan")) return; migrasiModeJalan = true;
   const target = MODE_BAWAAN(), tPola = POLA_BAWAAN(), polaNama = ({ "5": "Senin–Jumat", "6": "Senin–Sabtu", "7": "Setiap hari" })[tPola];
-  const list = karyawan.filter(u => u.kehadiran !== "tidak" && (!(gajiMap[u.uid] || {}).modeGaji || !(gajiMap[u.uid] || {}).polaKerja));
+  const list = karyawan.filter(u => u.kehadiran !== "tidak" && cvBoleh(u) && (!(gajiMap[u.uid] || {}).modeGaji || !(gajiMap[u.uid] || {}).polaKerja));
   if (!list.length) return;
   try{
     let nMode = 0, nPola = 0;
