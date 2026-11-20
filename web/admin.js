@@ -2242,10 +2242,8 @@ function rincianAbsen({ u, a, r, k: kepU = {} }, tombolAsal){
   const bisaUbah = isAdmin(), kerjaTgl = Object.fromEntries((r.kalender || []).map(z => [z.tanggal, z.kerja]));
   const pakaiLHK = !tanpaLebihHK(u) && r.liburJadi !== "lembur";
   const fullKerja = r.gaji?.polaKerja === "7";       // "Hari kerja: Setiap hari": lembur & Lebih HK hanya kalau diisi admin
-  const kunciLembur = x => { const kp = kepU[x.tanggal];
-    if (kp?.superadmin && !isSuper()) return "Ditetapkan superadmin: hanya superadmin yang bisa mengubah";
-    if (!fullKerja && x.pulang && !x.lebihHK && !x.lemburTercatat && !isSuper() && !(kp?.status === "lembur")) return "Pulang sebelum batas lembur: hanya superadmin yang bisa mengisi lembur";
-    return ""; };
+  // di Rincian absen admin selalu bisa mengisi lembur & Lebih HK (angka admin jadi patokan gaji)
+  const kunciLembur = () => "";
   const selLembur = x => {
     const ada = x.masuk || x.pulang, teks = x.lembur ? fmtNum(x.lembur) + " jam" : "";
     // hari Lebih HK juga bisa diisi lembur: Lebih HK hari itu otomatis jadi 0 (diganti lembur)
@@ -2257,7 +2255,7 @@ function rincianAbsen({ u, a, r, k: kepU = {} }, tombolAsal){
     const ada = x.masuk || x.pulang, teks = x.lebihHK ? fmtNum(x.jamLHK || 0) + " jam" : "";
     // hari libur yang ada absennya: Lebih HK selalu bisa diisi admin (angka admin jadi patokan gaji)
     if (!bisaUbah || !ada) return teks;      // kolom selalu bisa diisi (hari kerja maupun hari libur)
-    const kunci = kepU[x.tanggal]?.superadmin && !isSuper() ? "Ditetapkan superadmin: hanya superadmin yang bisa mengubah" : "";
+    const kunci = "";
     return `<input type="number" class="ra-edit" data-jenis="lhk" data-tgl="${x.tanggal}" min="0" max="24" step="1" value="${x.lebihHK ? (x.jamLHK || 0) : 0}"${kunci ? ` disabled title="${esc(kunci)}"` : kerjaTgl[x.tanggal] !== false ? ' title="Isi jam Lebih HK untuk hari kerja ini (0 / kosong = tidak ada). Lembur hari ini jadi 0."' : ' title="Jam Lebih HK (0 = tidak dihitung Lebih HK, kosongkan = hitung otomatis)"'}>${x.lhkKoreksi ? '<small class="ra-ubah">✎ diubah admin</small>' : ""}`;
   };
   const baris = (r.rows || []).map(x => {
@@ -2325,18 +2323,18 @@ function rincianAbsen({ u, a, r, k: kepU = {} }, tombolAsal){
       if (jenisUbah === "lembur"){
         const row = (r.rows || []).find(z => z.tanggal === tgl) || {};
         const gantiLHK = row.lebihHK && v > 0;      // hari Lebih HK diganti lembur -> Lebih HK hari itu 0
-        await setDoc(ref, { ...dasar, status: "lembur", jam: v, ...(gantiLHK ? { lhkJam: 0 } : kp?.lhkJam != null ? { lhkJam: kp.lhkJam } : {}),
-          ...(isSuper() && (kp?.superadmin || (row.pulang && !row.lemburTercatat)) ? { superadmin: true } : {}),
+        await setDoc(ref, { ...dasar, status: "lembur", jam: v, manual: true, ...(gantiLHK ? { lhkJam: 0 } : kp?.lhkJam != null ? { lhkJam: kp.lhkJam } : {}),
           oleh: profile.nama, olehUid: me.uid, waktu: serverTimestamp() });
         catatLog(CID, me.uid, profile, "ubah", `Mengubah lembur ${u.nama} ${tgl} menjadi ${v} jam (rincian absen)` + (gantiLHK ? ", Lebih HK hari itu dijadikan 0" : ""));
       } else if (kosong){
         // kembali dihitung otomatis
         if (!kp || kp.status === "koreksi") await deleteDoc(ref).catch(() => {});
-        else { const c = bersih(kp); delete c.lhkJam; await setDoc(ref, { ...c, waktu: serverTimestamp() }); }
+        else { const c = bersih(kp); delete c.lhkJam; delete c.superadmin; await setDoc(ref, { ...c, waktu: serverTimestamp() }); }
         catatLog(CID, me.uid, profile, "ubah", `Lebih HK ${u.nama} ${tgl} dikembalikan ke hitungan otomatis`);
       } else {
-        await setDoc(ref, kp && kp.status !== "koreksi" ? { ...bersih(kp), lhkJam: v, waktu: serverTimestamp() }
-          : { ...dasar, status: "koreksi", lhkJam: v, ...(isSuper() && kp?.superadmin ? { superadmin: true } : {}), oleh: profile.nama, olehUid: me.uid, waktu: serverTimestamp() });
+        const { superadmin: _s, ...kpTanpaSA } = kp ? bersih(kp) : {};
+        await setDoc(ref, kp && kp.status !== "koreksi" ? { ...kpTanpaSA, lhkJam: v, manual: true, waktu: serverTimestamp() }
+          : { ...dasar, status: "koreksi", lhkJam: v, manual: true, oleh: profile.nama, olehUid: me.uid, waktu: serverTimestamp() });
         catatLog(CID, me.uid, profile, "ubah", `Mengubah Lebih HK ${u.nama} ${tgl} menjadi ${v} jam (rincian absen)`);
       }
       toast("Tersimpan: " + (jenisUbah === "lembur" ? "lembur " : "Lebih HK ") + tglMedium(tgl));

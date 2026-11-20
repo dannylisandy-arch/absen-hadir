@@ -287,7 +287,8 @@ service cloud.firestore {
         // keputusan bertanda superadmin (lembur di bawah batas) hanya bisa dibuat/diubah/dihapus superadmin
         // keputusan lembur & Lebih HK memengaruhi gaji: hanya admin / superadmin (supervisor tidak)
         allow write: if adminOf(cid)
-          && (resource == null || resource.data.get('superadmin', false) != true || isSuper())
+          // keputusan superadmin hanya diubah superadmin, kecuali angka yang diisi admin langsung di Rincian absen (manual)
+          && (resource == null || resource.data.get('superadmin', false) != true || isSuper() || request.resource.data.get('manual', false) == true)
           && (request.method == 'delete' || (request.resource.data.status in ['lembur', 'lupa', 'koreksi'] && request.resource.data.uid is string
               && (!('lhkJam' in request.resource.data) || request.resource.data.lhkJam is number)
               && (request.resource.data.get('superadmin', false) != true || isSuper())));

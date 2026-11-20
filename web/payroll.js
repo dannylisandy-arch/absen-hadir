@@ -256,7 +256,7 @@ export function hitungGaji(records, aturan, gaji, year, month, today = new Date(
       // "lupa" = lupa absen pulang: lembur dibatalkan. Kalau lembur perlu disetujui, hanya yang disetujui yang dihitung.
       let j = row.lemburTercatat;
       // pulang sebelum batas lembur (jam pulang + mulai lembur + minimal lembur): tidak ada lembur, persetujuan apa pun diabaikan
-      if (!row.lemburTercatat && !kep?.superadmin && !full) j = 0;          // kecuali superadmin yang menetapkan (full: lembur memang diisi manual admin)
+      if (!row.lemburTercatat && !kep?.superadmin && !kep?.manual && !full) j = 0;   // angka yang diisi admin di Rincian absen (manual) selalu dipakai          // kecuali superadmin yang menetapkan (full: lembur memang diisi manual admin)
       else if (kep?.status === "lupa") j = 0;
       else if (kep?.status === "lembur" && kep.jam != null && kep.jam !== "") j = Math.max(0, Math.floor(+kep.jam));
       else if (A.lemburSetuju && kep?.status !== "lembur") j = 0;
